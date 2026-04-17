@@ -40,7 +40,10 @@ class PetController extends Controller
         }
 
         $records = $pet->medicalRecords()->orderBy('record_date', 'desc')->get();
+        $allPets = $pet->user_id === Auth::id()
+            ? Auth::user()->pets()->orderBy('name')->get()
+            : $pet->user->pets()->orderBy('name')->get();
 
-        return view('pets.records', compact('pet', 'records'));
+        return view('pets.records', compact('pet', 'records', 'allPets'));
     }
 }

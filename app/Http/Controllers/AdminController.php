@@ -161,7 +161,7 @@ class AdminController extends Controller
     public function patientRecords(Pet $pet)
     {
         $user = $pet->user;
-        $allPets = $user->pets;
+        $allPets = $user->pets()->orderBy('name')->get();
         
         $records = $pet->medicalRecords()->with('creator')->orderBy('record_date', 'desc')->get();
         $appointments = $pet->appointments()->orderBy('appointment_date', 'desc')->get();
@@ -178,8 +178,10 @@ class AdminController extends Controller
             'pet_type' => 'required|string|in:Dog,Cat,Bird,Rabbit,Hamster,Fish,Reptile,Other',
             'pet_breed' => 'nullable|string|max:255',
             'pet_dob' => 'nullable|date',
+            'diagnosis' => 'nullable|string',
+            'treatment' => 'nullable|string',
             'notes' => 'nullable|string',
-            'next_call' => 'nullable|string|max:255',
+            'next_call' => 'nullable|string',
             'record_date' => 'required|date',
             'submission_token' => 'required|string|max:255',
         ]);
@@ -199,6 +201,8 @@ class AdminController extends Controller
         $data = [
             'pet_id' => $pet->id,
             'title' => 'Medical Record - ' . $request->record_date,
+            'diagnosis' => $request->filled('diagnosis') ? trim($request->diagnosis) : null,
+            'treatment' => $request->filled('treatment') ? trim($request->treatment) : null,
             'notes' => $request->notes,
             'next_call' => $request->filled('next_call') ? trim($request->next_call) : null,
             'record_date' => $request->record_date,

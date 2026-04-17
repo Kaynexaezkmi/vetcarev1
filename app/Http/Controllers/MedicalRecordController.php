@@ -8,18 +8,29 @@ use Illuminate\Support\Facades\Auth;
 
 class MedicalRecordController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         $user = Auth::user();
+        $pets = $user->pets()->orderBy('name')->get();
+        $selectedPetId = $request->integer('pet_id');
         
         $medicalRecords = MedicalRecord::with(['pet', 'appointment'])
             ->whereHas('pet', function($query) use ($user) {
                 $query->where('user_id', $user->id);
-            })
+            });
+
+        if ($selectedPetId) {
+            $medicalRecords->whereHas('pet', function ($query) use ($user, $selectedPetId) {
+                $query->where('user_id', $user->id)
+                    ->where('id', $selectedPetId);
+            });
+        }
+
+        $medicalRecords = $medicalRecords
             ->orderBy('record_date', 'desc')
             ->paginate(15);
 
-        return view('medical-records.index', compact('medicalRecords'));
+        return view('medical-records.index', compact('medicalRecords', 'pets', 'selectedPetId'));
     }
 
     public function markAsSeen(MedicalRecord $medicalRecord)

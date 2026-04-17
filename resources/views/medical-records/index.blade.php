@@ -9,6 +9,20 @@
 </div>
 @endif
 
+@if(isset($pets) && $pets->count() > 1)
+<div class="mb-4 flex justify-end">
+    <form method="GET" action="{{ route('medical-records') }}" class="flex items-center gap-2">
+        <label for="petFilter" class="text-sm text-gray-500">Select Pet:</label>
+        <select id="petFilter" name="pet_id" onchange="this.form.submit()" class="px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500">
+            <option value="">All Pets</option>
+            @foreach($pets as $pet)
+            <option value="{{ $pet->id }}" {{ (int) $selectedPetId === $pet->id ? 'selected' : '' }}>{{ $pet->name }} ({{ $pet->type }})</option>
+            @endforeach
+        </select>
+    </form>
+</div>
+@endif
+
 @if($medicalRecords->isNotEmpty())
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
         @foreach($medicalRecords as $record)
@@ -21,6 +35,8 @@
              data-breed="{{ $record->pet->breed ?? '' }}"
              data-dob="{{ $record->pet->date_of_birth ? Carbon\Carbon::parse($record->pet->date_of_birth)->format('M d, Y') : '' }}"
              data-date="{{ $record->record_date ? Carbon\Carbon::parse($record->record_date)->format('M d, Y') : '' }}"
+             data-diagnosis="{{ $record->diagnosis ?? '' }}"
+             data-treatment="{{ $record->treatment ?? '' }}"
              data-notes="{{ addslashes($record->notes ?? '') }}"
              data-nextcall="{{ addslashes($record->next_call ?? '') }}"
              onclick="openUserRecordModal(this)">
@@ -37,6 +53,12 @@
             </div>
             <div class="text-xs text-gray-500 space-y-1">
                 <p>Record: {{ $record->record_date ? Carbon\Carbon::parse($record->record_date)->format('M d, Y') : '' }}</p>
+                @if($record->diagnosis)
+                <p><span class="font-medium text-gray-600">Diagnosis:</span> {{ $record->diagnosis }}</p>
+                @endif
+                @if($record->treatment)
+                <p><span class="font-medium text-gray-600">Treatment:</span> {{ $record->treatment }}</p>
+                @endif
                 @if($record->next_call)
                 <p class="text-orange-600 font-medium">Next Call: {{ $record->next_call }}</p>
                 @endif
@@ -110,9 +132,19 @@
                     <span id="modalRecordDate" class="text-gray-700 font-medium"></span>
                 </div>
             </div>
-            <div class="mb-3">
-                <label class="text-gray-500 text-xs md:text-sm block mb-1">Notes</label>
-                <p id="modalNotes" class="text-gray-700 text-xs md:text-sm bg-white p-2 rounded border border-gray-200 min-h-[60px]"></p>
+            <div class="space-y-3 mb-3">
+                <div>
+                    <label class="text-gray-500 text-xs md:text-sm block mb-1">Diagnosis</label>
+                    <p id="modalDiagnosis" class="text-gray-700 text-xs md:text-sm bg-white p-2 rounded border border-gray-200 min-h-[60px]"></p>
+                </div>
+                <div>
+                    <label class="text-gray-500 text-xs md:text-sm block mb-1">Treatment</label>
+                    <p id="modalTreatment" class="text-gray-700 text-xs md:text-sm bg-white p-2 rounded border border-gray-200 min-h-[60px]"></p>
+                </div>
+                <div>
+                    <label class="text-gray-500 text-xs md:text-sm block mb-1">Notes</label>
+                    <p id="modalNotes" class="text-gray-700 text-xs md:text-sm bg-white p-2 rounded border border-gray-200 min-h-[60px]"></p>
+                </div>
             </div>
             <div class="flex items-center gap-2">
                 <span class="text-gray-500 text-xs md:text-sm">Next Call:</span>
@@ -136,6 +168,8 @@ function openUserRecordModal(element) {
     document.getElementById('modalBreed').textContent = element.dataset.breed || '-';
     document.getElementById('modalDob').textContent = element.dataset.dob || '-';
     document.getElementById('modalRecordDate').textContent = element.dataset.date || '-';
+    document.getElementById('modalDiagnosis').textContent = element.dataset.diagnosis || '-';
+    document.getElementById('modalTreatment').textContent = element.dataset.treatment || '-';
     document.getElementById('modalNotes').textContent = element.dataset.notes || '-';
     document.getElementById('modalNextCall').textContent = element.dataset.nextcall || '-';
     const modal = document.getElementById('recordModal');

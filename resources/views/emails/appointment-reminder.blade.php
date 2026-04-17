@@ -126,8 +126,6 @@
         
         <p><strong>Please remember to:</strong></p>
         <ul>
-            <li>Arrive 10-15 minutes before your scheduled appointment time</li>
-            <li>Bring any relevant medical records or vaccination certificates</li>
             <li>Keep your pet calm and comfortable during the visit</li>
         </ul>
         

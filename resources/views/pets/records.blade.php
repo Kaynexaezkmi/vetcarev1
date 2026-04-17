@@ -9,7 +9,7 @@
     </div>
     
     <div class="bg-white rounded-2xl shadow-sm p-6 mb-6">
-        <div class="flex items-center justify-between">
+        <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div class="flex items-center">
                 <div class="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mr-4">
                     <svg class="w-8 h-8 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -22,6 +22,16 @@
                     <p class="text-sm text-gray-400">{{ $pet->gender }} | {{ $pet->age }}</p>
                 </div>
             </div>
+            @if(isset($allPets) && $allPets->count() > 1)
+            <div class="flex items-center gap-2">
+                <label for="petSelector" class="text-sm text-gray-500">Select Pet:</label>
+                <select id="petSelector" onchange="changePet(this.value)" class="px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500">
+                    @foreach($allPets as $availablePet)
+                    <option value="{{ $availablePet->id }}" {{ $availablePet->id == $pet->id ? 'selected' : '' }}>{{ $availablePet->name }} ({{ $availablePet->type }})</option>
+                    @endforeach
+                </select>
+            </div>
+            @endif
         </div>
     </div>
 
@@ -187,6 +197,14 @@ function closePetRecordModal() {
     const modal = document.getElementById('petRecordModal');
     modal.classList.add('hidden');
     modal.classList.remove('flex');
+}
+
+function changePet(petId) {
+    if (!petId) {
+        return;
+    }
+
+    window.location.href = '{{ url('/pets') }}/' + petId + '/records';
 }
 
 const petRecordModal = document.getElementById('petRecordModal');
