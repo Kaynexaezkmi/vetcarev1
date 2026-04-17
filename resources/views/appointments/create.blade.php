@@ -40,8 +40,6 @@
                             <option value="Bird" @selected(old('pet_type') === 'Bird')>Bird</option>
                             <option value="Rabbit" @selected(old('pet_type') === 'Rabbit')>Rabbit</option>
                             <option value="Hamster" @selected(old('pet_type') === 'Hamster')>Hamster</option>
-                            <option value="Fish" @selected(old('pet_type') === 'Fish')>Fish</option>
-                            <option value="Reptile" @selected(old('pet_type') === 'Reptile')>Reptile</option>
                             <option value="Other" @selected(old('pet_type') === 'Other')>Other</option>
                         </select>
                     </div>
