@@ -193,7 +193,6 @@ class DashboardController extends Controller
     public function updateSettings(Request $request)
     {
         $request->validate([
-            'name' => 'required|string|max:255',
             'phone' => 'nullable|string|regex:/^[0-9]{11}$/',
             'address' => 'nullable|string',
         ]);
@@ -204,7 +203,6 @@ class DashboardController extends Controller
         }
 
         Auth::user()->update([
-            'name' => $request->name,
             'phone' => $phone,
             'address' => $request->address,
         ]);

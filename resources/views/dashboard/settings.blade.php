@@ -42,7 +42,8 @@
             <div class="grid gap-4 md:grid-cols-2">
                 <div>
                     <label class="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-500">Full Name</label>
-                    <input type="text" name="name" value="{{ old('name', Auth::user()->name) }}" required class="{{ $fieldClass }}">
+                    <input type="text" value="{{ Auth::user()->name }}" readonly class="{{ $fieldMutedClass }}">
+                    <p class="text-xs text-gray-500 mt-1">Full name cannot be changed</p>
                 </div>
 
                 <div>
