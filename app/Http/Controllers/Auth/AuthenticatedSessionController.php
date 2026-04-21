@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Providers\RouteServiceProvider;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 
@@ -30,6 +31,14 @@ class AuthenticatedSessionController extends Controller
         }
 
         $request->session()->regenerate();
+
+        if (
+            Auth::user() instanceof MustVerifyEmail &&
+            !Auth::user()->isAdmin() &&
+            !Auth::user()->hasVerifiedEmail()
+        ) {
+            return redirect()->route('verification.notice');
+        }
 
         return redirect()->intended(RouteServiceProvider::HOME);
     }

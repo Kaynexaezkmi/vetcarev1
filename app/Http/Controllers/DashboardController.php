@@ -176,7 +176,9 @@ class DashboardController extends Controller
 
     public function settings()
     {
-        return view('dashboard.settings');
+        $pets = Auth::user()->pets()->orderBy('name')->get();
+
+        return view('dashboard.settings', compact('pets'));
     }
 
     public function deleteReminder(Reminder $reminder)

@@ -25,6 +25,7 @@ class DatabaseSeeder extends Seeder
             'phone' => '555-0100',
             'address' => '123 Vet Street',
             'role' => 'admin',
+            'email_verified_at' => now(),
         ]);
 
         $user1 = User::updateOrCreate([
@@ -35,6 +36,7 @@ class DatabaseSeeder extends Seeder
             'phone' => '555-0101',
             'address' => '456 Pet Avenue',
             'role' => 'user',
+            'email_verified_at' => now(),
         ]);
 
         $user2 = User::updateOrCreate([
@@ -45,6 +47,7 @@ class DatabaseSeeder extends Seeder
             'phone' => '555-0102',
             'address' => '789 Animal Road',
             'role' => 'user',
+            'email_verified_at' => now(),
         ]);
 
         $services = [

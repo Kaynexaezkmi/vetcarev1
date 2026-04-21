@@ -21,6 +21,7 @@
                 <label for="email" class="block text-sm font-medium text-gray-700 mb-2">Email</label>
                 <input id="email" type="email" name="email" value="{{ old('email') }}" required autocomplete="username" 
                     class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition @error('email') border-red-500 @enderror">
+                <p class="mt-1 text-sm text-gray-500">Use a real email address. We will send a verification link before you can continue.</p>
                 @error('email')
                 <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                 @enderror

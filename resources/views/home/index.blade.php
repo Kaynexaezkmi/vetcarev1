@@ -20,12 +20,21 @@
                     Professional veterinary services with a personal touch. Book appointments online and give your pets the healthcare they deserve.
                 </p>
                 <div class="flex flex-col sm:flex-row gap-4">
-                    <a href="{{ auth()->check() ? route('appointments.create') : route('register') }}" class="inline-flex items-center justify-center px-8 py-4 bg-orange-500 text-white font-semibold rounded-xl hover:bg-orange-600 transition shadow-lg shadow-orange-500/30">
+                    @auth
+                    <a href="{{ route('appointments.create') }}" class="inline-flex items-center justify-center px-8 py-4 bg-orange-500 text-white font-semibold rounded-xl hover:bg-orange-600 transition shadow-lg shadow-orange-500/30">
                         <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
                         </svg>
                         Book Appointment
                     </a>
+                    @else
+                    <button type="button" id="guest-book-appointment" class="inline-flex items-center justify-center px-8 py-4 bg-orange-500 text-white font-semibold rounded-xl hover:bg-orange-600 transition shadow-lg shadow-orange-500/30">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                        </svg>
+                        Book Appointment
+                    </button>
+                    @endauth
                     <a href="{{ route('services') }}" class="inline-flex items-center justify-center px-8 py-4 bg-white text-gray-700 font-semibold rounded-xl hover:bg-gray-50 transition border border-gray-200">
                         Our Services
                     </a>
@@ -201,14 +210,6 @@
             <h2 class="text-3xl lg:text-4xl font-bold text-white mb-4">Have Questions?</h2>
             <p class="text-lg text-orange-100">Send us a message and we'll get back to you as soon as possible.</p>
         </div>
-        @if(session('success'))
-        <div class="bg-white rounded-2xl p-6 mb-8 text-center">
-            <svg class="w-12 h-12 text-green-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-            </svg>
-            <p class="text-gray-700 font-medium">{{ session('success') }}</p>
-        </div>
-        @endif
         <form action="{{ route('inquiry.store') }}" method="POST" class="bg-white rounded-2xl p-8 shadow-2xl">
             @csrf
             <div class="grid md:grid-cols-2 gap-6 mb-6">
@@ -241,4 +242,78 @@
         </form>
     </div>
 </section>
+
+@include('home.partials.inquiry-success-modal')
+
+@guest
+<div id="guest-booking-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-gray-900/60 px-4">
+    <div class="w-full max-w-md rounded-3xl bg-white p-8 shadow-2xl">
+        <div class="flex items-start justify-between gap-4">
+            <div>
+                <h3 class="text-2xl font-bold text-gray-900">Book an Appointment</h3>
+                <p class="mt-3 text-gray-600">
+                    Already have an account?
+                    <a href="{{ route('login') }}" class="font-medium text-orange-500 hover:text-orange-600">Sign in</a>.
+                    If not,
+                    <a href="{{ route('register') }}" class="font-medium text-orange-500 hover:text-orange-600">register</a>.
+                </p>
+            </div>
+            <button type="button" id="close-guest-booking-modal" class="rounded-full p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600" aria-label="Close booking prompt">
+                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
+        </div>
+        <div class="mt-6 flex flex-col gap-3 sm:flex-row">
+            <a href="{{ route('login') }}" class="inline-flex flex-1 items-center justify-center rounded-xl bg-orange-500 px-5 py-3 font-semibold text-white transition hover:bg-orange-600">
+                Sign In
+            </a>
+            <a href="{{ route('register') }}" class="inline-flex flex-1 items-center justify-center rounded-xl border border-gray-200 px-5 py-3 font-semibold text-gray-700 transition hover:bg-gray-50">
+                Register
+            </a>
+        </div>
+    </div>
+</div>
+@endguest
 @endsection
+
+@guest
+@push('scripts')
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const trigger = document.getElementById('guest-book-appointment');
+        const modal = document.getElementById('guest-booking-modal');
+        const closeButton = document.getElementById('close-guest-booking-modal');
+
+        if (!trigger || !modal || !closeButton) {
+            return;
+        }
+
+        const openModal = function () {
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            document.body.classList.add('overflow-hidden');
+        };
+
+        const closeModal = function () {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            document.body.classList.remove('overflow-hidden');
+        };
+
+        trigger.addEventListener('click', openModal);
+        closeButton.addEventListener('click', closeModal);
+        modal.addEventListener('click', function (event) {
+            if (event.target === modal) {
+                closeModal();
+            }
+        });
+        document.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape' && !modal.classList.contains('hidden')) {
+                closeModal();
+            }
+        });
+    });
+</script>
+@endpush
+@endguest

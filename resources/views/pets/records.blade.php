@@ -3,11 +3,18 @@
 @section('header-title', $pet->name . "'s Medical Records")
 
 @section('content')
+@php($speciesOptions = ['Dog', 'Cat', 'Bird', 'Rabbit', 'Hamster', 'Fish', 'Reptile', 'Other'])
 <div class="max-w-4xl mx-auto">
-    <div class="mb-6">
-        <a href="{{ route('dashboard') }}" class="text-sm text-gray-500 hover:text-gray-700">← Back to Dashboard</a>
+    @if(session('success'))
+    <div class="mb-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl">
+        {{ session('success') }}
     </div>
-    
+    @endif
+
+    <div class="mb-6">
+        <a href="{{ route('dashboard') }}" class="text-sm text-gray-500 hover:text-gray-700">&larr; Back to Dashboard</a>
+    </div>
+
     <div class="bg-white rounded-2xl shadow-sm p-6 mb-6">
         <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div class="flex items-center">
@@ -19,19 +26,29 @@
                 <div>
                     <h3 class="text-xl font-bold text-gray-900">{{ $pet->name }}</h3>
                     <p class="text-gray-500">{{ $pet->type }} {{ $pet->breed ? '- ' . $pet->breed : '' }}</p>
-                    <p class="text-sm text-gray-400">{{ $pet->gender }} | {{ $pet->age }}</p>
+                    <p class="text-sm text-gray-400">{{ $pet->gender ?: 'No gender' }} | {{ $pet->age }}</p>
                 </div>
             </div>
-            @if(isset($allPets) && $allPets->count() > 1)
-            <div class="flex items-center gap-2">
-                <label for="petSelector" class="text-sm text-gray-500">Select Pet:</label>
-                <select id="petSelector" onchange="changePet(this.value)" class="px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500">
-                    @foreach($allPets as $availablePet)
-                    <option value="{{ $availablePet->id }}" {{ $availablePet->id == $pet->id ? 'selected' : '' }}>{{ $availablePet->name }} ({{ $availablePet->type }})</option>
-                    @endforeach
-                </select>
+
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                @if(isset($allPets) && $allPets->count() > 1)
+                <div class="flex items-center gap-2">
+                    <label for="petSelector" class="text-sm text-gray-500">Select Pet:</label>
+                    <select id="petSelector" onchange="changePet(this.value)" class="px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500">
+                        @foreach($allPets as $availablePet)
+                        <option value="{{ $availablePet->id }}" {{ $availablePet->id == $pet->id ? 'selected' : '' }}>{{ $availablePet->name }} ({{ $availablePet->type }})</option>
+                        @endforeach
+                    </select>
+                </div>
+                @endif
+
+                <button type="button" onclick="openPetUpdateModal()" class="inline-flex items-center justify-center px-4 py-2 bg-orange-500 text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5h2m-1 0v14m-7-7h14"></path>
+                    </svg>
+                    Update Pet
+                </button>
             </div>
-            @endif
         </div>
     </div>
 
@@ -39,7 +56,7 @@
         <div class="p-6 border-b border-gray-200">
             <h3 class="text-lg font-semibold text-gray-900">Medical History</h3>
         </div>
-        
+
         @if($records->count() > 0)
         <div class="grid gap-4 md:grid-cols-2 p-6">
             @foreach($records as $record)
@@ -101,6 +118,62 @@
     </div>
 </div>
 
+<div id="petUpdateModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center p-4" style="z-index: 70">
+    <div class="bg-white rounded-2xl p-4 md:p-6 w-full max-w-2xl">
+        <div class="flex justify-between items-center mb-5">
+            <h3 class="text-lg font-semibold text-gray-900">Update Pet Profile</h3>
+            <button type="button" onclick="closePetUpdateModal()" class="text-gray-400 hover:text-gray-600">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
+        </div>
+
+        <form action="{{ route('pets.update', $pet) }}" method="POST">
+            @csrf
+            @method('PUT')
+            <input type="hidden" name="activity_context" value="medical_history">
+
+            <div class="grid gap-4 md:grid-cols-2">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Name</label>
+                    <input type="text" name="name" value="{{ $pet->name }}" required class="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Gender</label>
+                    <select name="gender" class="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500">
+                        <option value="">Select gender</option>
+                        <option value="Male" @selected($pet->gender === 'Male')>Male</option>
+                        <option value="Female" @selected($pet->gender === 'Female')>Female</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Species</label>
+                    <select name="type" required class="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500">
+                        <option value="">Select species</option>
+                        @foreach($speciesOptions as $species)
+                        <option value="{{ $species }}" @selected($pet->type === $species)>{{ $species }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Breed</label>
+                    <input type="text" name="breed" value="{{ $pet->breed }}" class="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500">
+                </div>
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">DOB</label>
+                    <input type="date" name="date_of_birth" value="{{ optional($pet->date_of_birth)->format('Y-m-d') }}" class="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500">
+                </div>
+            </div>
+
+            <div class="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button type="button" onclick="closePetUpdateModal()" class="px-5 py-2.5 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
+                <button type="submit" class="px-6 py-2.5 bg-orange-500 text-white font-medium rounded-lg hover:bg-orange-600 transition-colors">Update Pet</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <div id="petRecordModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center p-4" style="z-index: 70">
     <div class="bg-white rounded-2xl p-4 md:p-6 w-full max-w-3xl max-h-[80vh] overflow-y-auto">
         <div class="flex justify-between items-center mb-4">
@@ -155,6 +228,18 @@
 
 @push('scripts')
 <script>
+function openPetUpdateModal() {
+    const modal = document.getElementById('petUpdateModal');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+}
+
+function closePetUpdateModal() {
+    const modal = document.getElementById('petUpdateModal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+}
+
 function openPetRecordModal(element) {
     document.getElementById('petRecordModalTitle').textContent = element.dataset.recordTitle || 'Medical Record';
     document.getElementById('petRecordModalDate').textContent = element.dataset.recordDate || '-';
@@ -216,9 +301,19 @@ if (petRecordModal) {
     });
 }
 
+const petUpdateModal = document.getElementById('petUpdateModal');
+if (petUpdateModal) {
+    petUpdateModal.addEventListener('click', function(event) {
+        if (event.target === petUpdateModal) {
+            closePetUpdateModal();
+        }
+    });
+}
+
 document.addEventListener('keydown', function(event) {
     if (event.key === 'Escape') {
         closePetRecordModal();
+        closePetUpdateModal();
     }
 });
 </script>

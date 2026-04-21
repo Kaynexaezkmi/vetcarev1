@@ -13,13 +13,16 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Database\QueryException;
+use Illuminate\Validation\Rule;
 
 class AppointmentController extends Controller
 {
     public function create()
     {
         $services = Service::where('is_active', true)->get();
-        return view('appointments.create', compact('services'));
+        $pets = Auth::user()->pets()->orderBy('name')->get();
+
+        return view('appointments.create', compact('services', 'pets'));
     }
 
     public function store(Request $request)
@@ -27,9 +30,11 @@ class AppointmentController extends Controller
         $appointmentTime = $this->normalizeAppointmentTime($request->appointment_time);
 
         $validator = Validator::make($request->all(), [
-            'pet_name' => 'required|string|max:255',
-            'pet_type' => 'required|in:Dog,Cat,Bird,Rabbit,Hamster,Fish,Reptile,Other',
-            'pet_breed' => 'nullable|string|max:255',
+            'pet_id' => [
+                'required',
+                'integer',
+                Rule::exists('pets', 'id')->where(fn ($query) => $query->where('user_id', Auth::id())),
+            ],
             'service_id' => 'nullable|exists:services,id',
             'appointment_date' => 'required|date|after_or_equal:today',
             'appointment_time' => 'required',
@@ -44,6 +49,8 @@ class AppointmentController extends Controller
                 ->withInput();
         }
 
+        $pet = Pet::where('user_id', Auth::id())->findOrFail((int) $request->pet_id);
+
         $exists = Appointment::where('appointment_date', $request->appointment_date)
             ->where('appointment_time', $appointmentTime)
             ->whereIn('status', ['pending', 'approved'])
@@ -54,13 +61,6 @@ class AppointmentController extends Controller
                 ->withInput()
                 ->with('error', 'This time slot is already booked. Please select another time.');
         }
-
-        $pet = Pet::create([
-            'user_id' => Auth::id(),
-            'name' => $request->pet_name,
-            'type' => $request->pet_type,
-            'breed' => $request->pet_breed,
-        ]);
 
         try {
             Appointment::create([

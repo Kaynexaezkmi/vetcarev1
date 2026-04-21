@@ -87,16 +87,18 @@
         @foreach($records as $record)
         <div class="bg-gray-50 rounded-xl p-4 border border-gray-100 hover:shadow-md transition-shadow cursor-pointer relative"
              id="recordCard{{ $record->id }}"
+             data-record-id="{{ $record->id }}"
              data-pet="{{ $record->pet->name ?? '' }}"
              data-gender="{{ $record->pet->gender ?? '' }}"
              data-type="{{ $record->pet->type ?? '' }}"
              data-breed="{{ $record->pet->breed ?? '' }}"
              data-dob="{{ $record->pet->date_of_birth ? Carbon\Carbon::parse($record->pet->date_of_birth)->format('M d, Y') : '' }}"
              data-date="{{ $record->record_date ? Carbon\Carbon::parse($record->record_date)->format('M d, Y') : '' }}"
+             data-date-value="{{ $record->record_date ? Carbon\Carbon::parse($record->record_date)->format('Y-m-d') : '' }}"
              data-diagnosis="{{ $record->diagnosis ?? '' }}"
              data-treatment="{{ $record->treatment ?? '' }}"
-             data-notes="{{ addslashes($record->notes ?? '') }}"
-             data-nextcall="{{ addslashes($record->next_call ?? '') }}"
+             data-notes="{{ $record->notes ?? '' }}"
+             data-nextcall="{{ $record->next_call ?? '' }}"
              onclick="openViewRecordModal(this); event.stopPropagation()">
             <div class="flex items-center justify-between mb-3">
                 <div class="flex items-center gap-3">
@@ -141,6 +143,53 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
         </svg>
         <p class="text-gray-500">No medical records found</p>
+    </div>
+    @endif
+</div>
+
+<div class="bg-white rounded-2xl shadow-sm mt-6">
+    <div class="p-6 border-b border-gray-200">
+        <h3 class="text-lg font-semibold text-gray-900">Activity Logs</h3>
+    </div>
+
+    @if($activityLogs->isNotEmpty())
+    <div class="p-6 space-y-4">
+        @foreach($activityLogs as $log)
+        @php($changes = data_get($log->properties, 'changes', []))
+        <div class="rounded-xl border border-gray-100 bg-gray-50 p-4">
+            <div class="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                <div>
+                    <p class="text-sm font-medium text-gray-900">{{ $log->description }}</p>
+                    <p class="text-xs text-gray-500 mt-1">
+                        {{ $log->actor?->name ?? 'System' }} • {{ $log->created_at->format('M d, Y h:i A') }}
+                    </p>
+                </div>
+                <span class="inline-flex w-fit rounded-full bg-blue-100 px-2.5 py-1 text-xs font-medium text-blue-700">
+                    {{ ucwords(str_replace('_', ' ', data_get($log->properties, 'context', 'activity'))) }}
+                </span>
+            </div>
+
+            @if($changes)
+            <div class="mt-3 grid gap-2">
+                @foreach($changes as $change)
+                <div class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+                    <span class="font-medium text-gray-900">{{ $change['label'] ?? 'Field' }}:</span>
+                    <span class="text-gray-500">{{ $change['from'] ?? 'Not set' }}</span>
+                    <span class="mx-1 text-gray-300">→</span>
+                    <span class="text-gray-900">{{ $change['to'] ?? 'Not set' }}</span>
+                </div>
+                @endforeach
+            </div>
+            @endif
+        </div>
+        @endforeach
+    </div>
+    @else
+    <div class="p-12 text-center">
+        <svg class="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-6m3 6V7m3 10v-4M7 4h10a2 2 0 012 2v12a2 2 0 01-2 2H7a2 2 0 01-2-2V6a2 2 0 012-2z"></path>
+        </svg>
+        <p class="text-gray-500">No activity logs found</p>
     </div>
     @endif
 </div>
@@ -297,7 +346,7 @@
 <div id="viewRecordModal" class="fixed inset-0 bg-black/50 items-center justify-center" style="z-index: 70; display: none">
     <div class="bg-white rounded-2xl p-6 w-full max-w-3xl mx-4">
         <div class="flex justify-between items-center mb-5">
-            <h3 class="text-lg font-semibold text-gray-900">Medical Record Details</h3>
+            <h3 class="text-lg font-semibold text-gray-900">Update Medical Record</h3>
             <button onclick="window.closeViewRecordModal()" class="text-gray-400 hover:text-gray-600">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
@@ -330,36 +379,41 @@
             </div>
         </div>
 
-        <div class="bg-gray-50 rounded-xl p-4 mb-5">
-            <div class="flex flex-wrap gap-4 text-sm">
-                <div class="flex items-center gap-2">
-                    <span class="text-gray-500">Record Date:</span>
-                    <span id="viewRecordDate" class="text-gray-700"></span>
+        <form id="updateMedicalRecordForm" method="POST">
+            @csrf
+            @method('PUT')
+            <div class="bg-gray-50 rounded-xl p-4 mb-5">
+                <div class="grid md:grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-xs font-medium text-gray-500 uppercase block mb-1">Record Date</label>
+                        <input type="date" name="record_date" id="editRecordDate" required class="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500">
+                    </div>
+                    <div>
+                        <label class="text-xs font-medium text-gray-500 uppercase block mb-1">Next Call</label>
+                        <input type="text" name="next_call" id="editNextCall" class="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500">
+                    </div>
                 </div>
-                <div class="flex items-center gap-2">
-                    <span class="text-gray-500">Next Call:</span>
-                    <span id="viewNextCall" class="text-orange-600 font-medium"></span>
+                <div class="mt-3 pt-3 border-t border-gray-200 space-y-3">
+                    <div>
+                        <label class="text-xs font-medium text-gray-500 uppercase block mb-1">Diagnosis</label>
+                        <textarea name="diagnosis" id="editDiagnosis" rows="2" class="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500 resize-none"></textarea>
+                    </div>
+                    <div>
+                        <label class="text-xs font-medium text-gray-500 uppercase block mb-1">Treatment</label>
+                        <textarea name="treatment" id="editTreatment" rows="2" class="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500 resize-none"></textarea>
+                    </div>
+                    <div>
+                        <label class="text-xs font-medium text-gray-500 uppercase block mb-1">Notes</label>
+                        <textarea name="notes" id="editNotes" rows="2" class="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500 resize-none"></textarea>
+                    </div>
                 </div>
             </div>
-            <div class="mt-3 pt-3 border-t border-gray-200 space-y-3">
-                <div>
-                    <label class="text-xs font-medium text-gray-500 uppercase block mb-1">Diagnosis</label>
-                    <p id="viewDiagnosis" class="text-gray-700 text-sm bg-white p-3 rounded-lg border border-gray-200 min-h-[56px]"></p>
-                </div>
-                <div>
-                    <label class="text-xs font-medium text-gray-500 uppercase block mb-1">Treatment</label>
-                    <p id="viewTreatment" class="text-gray-700 text-sm bg-white p-3 rounded-lg border border-gray-200 min-h-[56px]"></p>
-                </div>
-                <div>
-                    <label class="text-xs font-medium text-gray-500 uppercase block mb-1">Notes</label>
-                    <p id="viewNotes" class="text-gray-700 text-sm bg-white p-3 rounded-lg border border-gray-200 min-h-[56px]"></p>
-                </div>
-            </div>
-        </div>
 
-        <div class="flex justify-end">
-            <button onclick="window.closeViewRecordModal()" class="px-6 py-2.5 bg-orange-500 text-white text-sm font-medium rounded-lg hover:bg-orange-600">Close</button>
-        </div>
+            <div class="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+                <button type="button" onclick="window.closeViewRecordModal()" class="px-5 py-2.5 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors">Close</button>
+                <button type="submit" id="updateMedicalRecordSubmitBtn" class="px-6 py-2.5 bg-orange-500 text-white text-sm font-medium rounded-lg hover:bg-orange-600">Update Record</button>
+            </div>
+        </form>
     </div>
 </div>
 @endsection
@@ -387,16 +441,20 @@ function closeDeleteModal() {
 var recordToDelete = null;
 
 function openViewRecordModal(element) {
+    const updateForm = document.getElementById('updateMedicalRecordForm');
+    const recordId = element.getAttribute('data-record-id');
+
+    updateForm.action = '{{ url('/admin/records') }}/' + recordId;
     document.getElementById('viewPetName').textContent = element.getAttribute('data-pet') || '-';
     document.getElementById('viewPetGender').textContent = element.getAttribute('data-gender') || '-';
     document.getElementById('viewPetType').textContent = element.getAttribute('data-type') || '-';
     document.getElementById('viewPetBreed').textContent = element.getAttribute('data-breed') || '-';
     document.getElementById('viewPetDob').textContent = element.getAttribute('data-dob') || '-';
-    document.getElementById('viewRecordDate').textContent = element.getAttribute('data-date') || '-';
-    document.getElementById('viewDiagnosis').textContent = element.getAttribute('data-diagnosis') || '-';
-    document.getElementById('viewTreatment').textContent = element.getAttribute('data-treatment') || '-';
-    document.getElementById('viewNotes').textContent = element.getAttribute('data-notes') || '-';
-    document.getElementById('viewNextCall').textContent = element.getAttribute('data-nextcall') || '-';
+    document.getElementById('editRecordDate').value = element.getAttribute('data-date-value') || '';
+    document.getElementById('editDiagnosis').value = element.getAttribute('data-diagnosis') || '';
+    document.getElementById('editTreatment').value = element.getAttribute('data-treatment') || '';
+    document.getElementById('editNotes').value = element.getAttribute('data-notes') || '';
+    document.getElementById('editNextCall').value = element.getAttribute('data-nextcall') || '';
     document.getElementById('viewRecordModal').style.display = 'flex';
 }
 
@@ -474,12 +532,22 @@ document.addEventListener('keydown', function(e) {
 
 var medicalRecordForm = document.getElementById('medicalRecordForm');
 var medicalRecordSubmitBtn = document.getElementById('medicalRecordSubmitBtn');
+var updateMedicalRecordForm = document.getElementById('updateMedicalRecordForm');
+var updateMedicalRecordSubmitBtn = document.getElementById('updateMedicalRecordSubmitBtn');
 
 if (medicalRecordForm && medicalRecordSubmitBtn) {
     medicalRecordForm.addEventListener('submit', function() {
         medicalRecordSubmitBtn.disabled = true;
         medicalRecordSubmitBtn.textContent = 'Saving...';
         medicalRecordSubmitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+    });
+}
+
+if (updateMedicalRecordForm && updateMedicalRecordSubmitBtn) {
+    updateMedicalRecordForm.addEventListener('submit', function() {
+        updateMedicalRecordSubmitBtn.disabled = true;
+        updateMedicalRecordSubmitBtn.textContent = 'Updating...';
+        updateMedicalRecordSubmitBtn.classList.add('opacity-50', 'cursor-not-allowed');
     });
 }
 </script>

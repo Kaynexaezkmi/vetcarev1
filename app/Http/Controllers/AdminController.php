@@ -164,10 +164,11 @@ class AdminController extends Controller
         $allPets = $user->pets()->orderBy('name')->get();
         
         $records = $pet->medicalRecords()->with('creator')->orderBy('record_date', 'desc')->get();
+        $activityLogs = $pet->activityLogs()->with('actor')->get();
         $appointments = $pet->appointments()->orderBy('appointment_date', 'desc')->get();
         $recordSubmissionToken = (string) Str::uuid();
         
-        return view('admin.patients.records', compact('pet', 'records', 'appointments', 'allPets', 'user', 'recordSubmissionToken'));
+        return view('admin.patients.records', compact('pet', 'records', 'activityLogs', 'appointments', 'allPets', 'user', 'recordSubmissionToken'));
     }
 
     public function storeMedicalRecord(Request $request, Pet $pet)
@@ -190,13 +191,19 @@ class AdminController extends Controller
             return redirect()->back()->with('success', 'Medical record already saved.');
         }
 
-        $pet->update([
+        $petData = [
             'name' => $request->pet_name,
             'gender' => $request->pet_gender,
             'type' => $request->pet_type,
             'breed' => $request->pet_breed,
             'date_of_birth' => $request->pet_dob,
-        ]);
+        ];
+
+        $changes = $pet->diffProfileAttributes($petData);
+
+        $pet->update($petData);
+
+        $pet->logProfileUpdate($changes, Auth::user(), 'admin_patient_records');
 
         $data = [
             'pet_id' => $pet->id,
@@ -223,6 +230,45 @@ class AdminController extends Controller
         $record->delete();
 
         return redirect()->back()->with('success', 'Medical record deleted.');
+    }
+
+    public function updateMedicalRecord(Request $request, MedicalRecord $record)
+    {
+        $request->validate([
+            'record_date' => 'required|date',
+            'next_call' => 'nullable|string',
+            'diagnosis' => 'nullable|string',
+            'treatment' => 'nullable|string',
+            'notes' => 'nullable|string',
+        ]);
+
+        $recordData = [
+            'title' => 'Medical Record - ' . $request->record_date,
+            'record_date' => $request->record_date,
+            'next_call' => $request->filled('next_call') ? trim($request->next_call) : null,
+            'diagnosis' => $request->filled('diagnosis') ? trim($request->diagnosis) : null,
+            'treatment' => $request->filled('treatment') ? trim($request->treatment) : null,
+            'notes' => $request->filled('notes') ? trim($request->notes) : null,
+        ];
+
+        $changes = $record->diffActivityAttributes($recordData);
+
+        $record->update($recordData);
+
+        if ($changes !== []) {
+            $record->pet->activityLogs()->create([
+                'user_id' => Auth::id(),
+                'action' => 'medical_record_updated',
+                'description' => Auth::user()->name . ' updated a medical record dated ' . Carbon::parse($record->record_date)->format('M d, Y') . '.',
+                'properties' => [
+                    'context' => 'admin_patient_records',
+                    'record_id' => $record->id,
+                    'changes' => $changes,
+                ],
+            ]);
+        }
+
+        return redirect()->back()->with('success', 'Medical record updated successfully!');
     }
 
     public function inquiries(Request $request)
@@ -401,6 +447,7 @@ class AdminController extends Controller
             'email' => $request->email,
             'password' => bcrypt($request->password),
             'role' => 'admin',
+            'email_verified_at' => now(),
         ]);
 
         return redirect()->back()->with('success', 'Admin user created successfully!');

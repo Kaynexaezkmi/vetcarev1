@@ -18,7 +18,7 @@ Route::get('/api/services', [HomeController::class, 'apiServices']);
 Route::get('/api/appointments/slots', [HomeController::class, 'getAvailableSlots']);
 Route::get('/api/appointments/calendar', [HomeController::class, 'calendarEvents']);
 
-Route::middleware(['auth'])->group(function () {
+Route::middleware(['auth', 'user.verified'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
     
     Route::get('/appointments/create', [AppointmentController::class, 'create'])->name('appointments.create');
@@ -31,6 +31,8 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/api/appointments/by-date', [AppointmentController::class, 'getAppointmentsByDate'])->name('appointments.by-date');
     
     Route::post('/pets', [PetController::class, 'store'])->name('pets.store');
+    Route::put('/pets/{pet}', [PetController::class, 'update'])->name('pets.update');
+    Route::delete('/pets/{pet}', [PetController::class, 'destroy'])->name('pets.destroy');
     Route::get('/pets/{pet}/records', [PetController::class, 'records'])->name('pets.records');
     
     Route::get('/reminders', [DashboardController::class, 'reminders'])->name('reminders');
@@ -59,6 +61,7 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::get('/patients', [AdminController::class, 'patients'])->name('patients.index');
     Route::get('/patients/{pet}/records', [AdminController::class, 'patientRecords'])->name('patients.records');
     Route::post('/patients/{pet}/records', [AdminController::class, 'storeMedicalRecord'])->name('patients.records.store');
+    Route::put('/records/{record}', [AdminController::class, 'updateMedicalRecord'])->name('records.update');
     Route::delete('/records/{record}', [AdminController::class, 'deleteMedicalRecord'])->name('records.delete');
     
     Route::get('/inquiries', [AdminController::class, 'inquiries'])->name('inquiries.index');

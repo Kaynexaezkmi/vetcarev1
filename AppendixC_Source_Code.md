@@ -218,7 +218,7 @@ The system uses Laravel's database configuration file to define supported databa
         'port' => env('DB_PORT', '3306'),
         'database' => env('DB_DATABASE', 'laravel'),
         'username' => env('DB_USERNAME', 'root'),
-        'password' => env('DB_PASSWORD', ''),
+        'password' => env('DB_PASSWORD', 'mypassword'),
         'unix_socket' => env('DB_SOCKET', ''),
         'charset' => env('DB_CHARSET', 'utf8mb4'),
         'collation' => env('DB_COLLATION', 'utf8mb4_unicode_ci'),
@@ -415,15 +415,3 @@ class AdminController extends Controller
         return redirect()->back()->with('success', 'Medical record added successfully!');
     }
 }
-```
-
-## Summary
-
-The source code in this appendix shows that the VetCare system is structured using the Laravel MVC architecture:
-
-1. `public/index.php` serves as the application entry point.
-2. Controllers such as `AppointmentController`, `DashboardController`, and `AdminController` implement the core business logic.
-3. `config/database.php` defines the database connectivity settings.
-4. Models such as `Appointment` and `Pet` encapsulate the main data entities and relationships of the system.
-
-These code components collectively support the appointment scheduling, pet record management, reminder handling, and administrative monitoring features of the VetCare application.
