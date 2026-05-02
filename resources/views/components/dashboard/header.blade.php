@@ -8,6 +8,7 @@
         <h1 class="text-lg font-semibold text-gray-800 hide-mobile">@yield('header-title', 'Dashboard')</h1>
         <h1 class="text-lg font-semibold text-gray-800 md:hidden">VetCare</h1>
     </div>
+    @unless($__env->yieldContent('hide-dashboard-profile'))
     <div class="flex items-center space-x-2 md:space-x-4">
         <div class="relative" x-data="{ open: false }">
             <button @click="open = !open" class="flex items-center space-x-2 focus:outline-none">
@@ -43,4 +44,5 @@
             </div>
         </div>
     </div>
+    @endunless
 </header>

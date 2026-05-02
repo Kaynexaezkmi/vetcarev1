@@ -35,4 +35,8 @@ return [
         ],
     ],
 
+    'api' => [
+        'bearer_token' => env('API_BEARER_TOKEN'),
+    ],
+
 ];

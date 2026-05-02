@@ -1,8 +1,8 @@
 <aside class="w-64 bg-white border-r border-gray-200 flex flex-col sidebar-desktop">
-    <div class="p-6 border-b border-gray-200">
-        <a href="/" class="flex items-center space-x-2">
-            <div class="w-28 h-28 rounded-xl flex items-center justify-center overflow-hidden">
-                <img src="{{ asset('images/logovet.jpg') }}" alt="Logo" class="w-full h-full object-contain">
+    <div class="flex justify-center border-b border-gray-200 px-6 py-8">
+        <a href="/" class="flex items-center justify-center">
+            <div class="flex h-36 w-36 items-center justify-center overflow-hidden rounded-xl">
+                <img src="{{ asset('images/logovet.jpg') }}" alt="VetCare Logo" class="h-full w-full object-contain object-center">
             </div>
         </a>
     </div>

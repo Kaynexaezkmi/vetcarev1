@@ -21,11 +21,11 @@
                 </p>
                 <div class="flex flex-col sm:flex-row gap-4">
                     @auth
-                    <a href="{{ route('appointments.create') }}" class="inline-flex items-center justify-center px-8 py-4 bg-orange-500 text-white font-semibold rounded-xl hover:bg-orange-600 transition shadow-lg shadow-orange-500/30">
+                    <a href="{{ Auth::user()->isAdmin() ? route('admin.appointments.index') : route('appointments.create') }}" class="inline-flex items-center justify-center px-8 py-4 bg-orange-500 text-white font-semibold rounded-xl hover:bg-orange-600 transition shadow-lg shadow-orange-500/30">
                         <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
                         </svg>
-                        Book Appointment
+                        {{ Auth::user()->isAdmin() ? 'Manage Appointments' : 'Book Appointment' }}
                     </a>
                     @else
                     <button type="button" id="guest-book-appointment" class="inline-flex items-center justify-center px-8 py-4 bg-orange-500 text-white font-semibold rounded-xl hover:bg-orange-600 transition shadow-lg shadow-orange-500/30">

@@ -2,22 +2,25 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Appointment;
-use App\Models\Pet;
-use App\Models\Service;
-use App\Models\MedicalRecord;
-use App\Models\Inquiry;
-use App\Models\Reminder;
-use App\Models\User;
-use App\Models\Feedback;
 use App\Mail\AppointmentReminder;
 use App\Mail\AppointmentStatusNotification;
-use Illuminate\Http\Request;
+use App\Models\Appointment;
+use App\Models\Feedback;
+use App\Models\Inquiry;
+use App\Models\MedicalRecord;
+use App\Models\Pet;
+use App\Models\Reminder;
+use App\Models\Service;
+use App\Models\User;
 use Carbon\Carbon;
+use Illuminate\Database\QueryException;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Throwable;
 
 class AdminController extends Controller
 {
@@ -38,11 +41,11 @@ class AdminController extends Controller
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->whereHas('user', function ($q) use ($search) {
-                    $q->where('name', 'like', '%' . $search . '%');
+                    $q->where('name', 'like', '%'.$search.'%');
                 })->orWhereHas('pet', function ($q) use ($search) {
-                    $q->where('name', 'like', '%' . $search . '%');
+                    $q->where('name', 'like', '%'.$search.'%');
                 })->orWhereHas('service', function ($q) use ($search) {
-                    $q->where('name', 'like', '%' . $search . '%');
+                    $q->where('name', 'like', '%'.$search.'%');
                 });
             });
         }
@@ -74,11 +77,11 @@ class AdminController extends Controller
 
         $appointmentDate = Carbon::parse($appointment->appointment_date);
         $reminderDate = $appointmentDate->copy()->subDay()->setTime(9, 0);
-        
+
         if ($reminderDate->isPast() || $reminderDate->isToday()) {
             $reminderDate = now();
         }
-        
+
         Reminder::create([
             'user_id' => $appointment->user_id,
             'appointment_id' => $appointment->id,
@@ -87,8 +90,8 @@ class AdminController extends Controller
             'is_sent' => false,
         ]);
 
-        $message = $reminderDate->isPast() || $reminderDate->isToday() 
-            ? 'Appointment approved successfully! Reminder will be sent immediately.' 
+        $message = $reminderDate->isPast() || $reminderDate->isToday()
+            ? 'Appointment approved successfully! Reminder will be sent immediately.'
             : 'Appointment approved successfully! Reminder will be sent 1 day before.';
 
         return redirect()->back()->with('success', $message);
@@ -109,12 +112,67 @@ class AdminController extends Controller
             'status' => 'rejected',
             'cancellation_reason' => $request->reason,
             'cancelled_by' => 'admin',
-            'notes' => trim(($appointment->notes ? $appointment->notes . "\n" : '') . 'Rejection reason: ' . $request->reason),
+            'notes' => trim(($appointment->notes ? $appointment->notes."\n" : '').'Rejection reason: '.$request->reason),
         ]);
 
-        $this->sendAppointmentStatusNotification($appointment->fresh(['pet', 'user', 'service']), 'Rejected');
+        $notificationSent = $this->sendAppointmentStatusNotification($appointment->fresh(['pet', 'user', 'service']), 'Rejected');
 
-        return redirect()->back()->with('success', 'Appointment rejected and email notification sent.');
+        return redirect()->back()->with(
+            $notificationSent ? 'success' : 'error',
+            $notificationSent
+                ? 'Appointment rejected and email notification sent.'
+                : 'Appointment rejected, but the email notification could not be sent. Please check the mail settings.'
+        );
+    }
+
+    public function rescheduleAppointment(Request $request, Appointment $appointment)
+    {
+        if (! $appointment->canReschedule(true)) {
+            return redirect()->back()->with('error', 'This appointment cannot be rescheduled.');
+        }
+
+        $request->validate([
+            'appointment_date' => 'required|date|after_or_equal:today',
+            'appointment_time' => 'required',
+            'reason' => 'required|string|max:250',
+        ]);
+
+        $appointmentTime = Carbon::parse($request->appointment_time)->format('H:i:s');
+
+        $exists = Appointment::where('appointment_date', $request->appointment_date)
+            ->where('appointment_time', $appointmentTime)
+            ->where('id', '!=', $appointment->id)
+            ->whereIn('status', ['pending', 'approved'])
+            ->exists();
+
+        if ($exists) {
+            return redirect()->back()->with('error', 'This time slot is already booked.');
+        }
+
+        try {
+            $appointment->update([
+                'appointment_date' => $request->appointment_date,
+                'appointment_time' => $appointmentTime,
+                'status' => 'pending',
+                'rescheduled' => true,
+                'notes' => trim(($appointment->notes ? $appointment->notes."\n" : '').'Admin reschedule reason: '.$request->reason),
+            ]);
+        } catch (QueryException $e) {
+            if (str_contains(strtolower($e->getMessage()), 'appointments_slot_guard_unique')) {
+                return redirect()->back()->with('error', 'This date and time is already booked. Please select another time.');
+            }
+
+            throw $e;
+        }
+
+        $notificationSent = $this->sendAppointmentStatusNotification($appointment->fresh(['pet', 'user', 'service']), 'Rescheduled');
+
+        return redirect()->back()->with(
+            $notificationSent ? 'success' : 'error',
+            $notificationSent
+                ? 'Appointment rescheduled and email notification sent.'
+                : 'Appointment rescheduled, but the email notification could not be sent. Please check the mail settings.'
+        );
     }
 
     public function completeAppointment(Appointment $appointment)
@@ -130,26 +188,26 @@ class AdminController extends Controller
     public function patients(Request $request)
     {
         $query = User::where('role', 'user')
-            ->whereHas('pets', function($petQuery) {
-                $petQuery->whereHas('appointments', function($aptQuery) {
+            ->whereHas('pets', function ($petQuery) {
+                $petQuery->whereHas('appointments', function ($aptQuery) {
                     $aptQuery->whereIn('status', ['pending', 'approved', 'completed']);
                 });
             })
-            ->with(['pets' => function($petQuery) {
-                $petQuery->whereHas('appointments', function($aptQuery) {
+            ->with(['pets' => function ($petQuery) {
+                $petQuery->whereHas('appointments', function ($aptQuery) {
                     $aptQuery->whereIn('status', ['pending', 'approved', 'completed']);
                 });
             }]);
 
         if ($request->search) {
             $search = $request->search;
-            $query->where(function($q) use ($search) {
-                $q->where('name', 'like', '%' . $search . '%')
-                  ->orWhere('email', 'like', '%' . $search . '%')
-                  ->orWhere('phone', 'like', '%' . $search . '%')
-                  ->orWhereHas('pets', function($petQuery) use ($search) {
-                      $petQuery->where('name', 'like', '%' . $search . '%');
-                  });
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', '%'.$search.'%')
+                    ->orWhere('email', 'like', '%'.$search.'%')
+                    ->orWhere('phone', 'like', '%'.$search.'%')
+                    ->orWhereHas('pets', function ($petQuery) use ($search) {
+                        $petQuery->where('name', 'like', '%'.$search.'%');
+                    });
             });
         }
 
@@ -158,27 +216,25 @@ class AdminController extends Controller
         return view('admin.patients.index', compact('owners'));
     }
 
-    public function patientRecords(Pet $pet)
+    public function patientRecords(Request $request, Pet $pet)
     {
         $user = $pet->user;
         $allPets = $user->pets()->orderBy('name')->get();
-        
+
         $records = $pet->medicalRecords()->with('creator')->orderBy('record_date', 'desc')->get();
-        $activityLogs = $pet->activityLogs()->with('actor')->get();
+        $activityLogs = $pet->activityLogs()->with('actor')->latest()->get();
         $appointments = $pet->appointments()->orderBy('appointment_date', 'desc')->get();
         $recordSubmissionToken = (string) Str::uuid();
-        
-        return view('admin.patients.records', compact('pet', 'records', 'activityLogs', 'appointments', 'allPets', 'user', 'recordSubmissionToken'));
+        $editingRecord = $request->integer('edit') > 0
+            ? $records->firstWhere('id', $request->integer('edit'))
+            : null;
+
+        return view('admin.patients.records', compact('pet', 'records', 'activityLogs', 'appointments', 'allPets', 'user', 'recordSubmissionToken', 'editingRecord'));
     }
 
     public function storeMedicalRecord(Request $request, Pet $pet)
     {
         $request->validate([
-            'pet_name' => 'required|string|max:255',
-            'pet_gender' => 'nullable|string|in:Male,Female',
-            'pet_type' => 'required|string|in:Dog,Cat,Bird,Rabbit,Hamster,Fish,Reptile,Other',
-            'pet_breed' => 'nullable|string|max:255',
-            'pet_dob' => 'nullable|date',
             'diagnosis' => 'nullable|string',
             'treatment' => 'nullable|string',
             'notes' => 'nullable|string',
@@ -191,23 +247,9 @@ class AdminController extends Controller
             return redirect()->back()->with('success', 'Medical record already saved.');
         }
 
-        $petData = [
-            'name' => $request->pet_name,
-            'gender' => $request->pet_gender,
-            'type' => $request->pet_type,
-            'breed' => $request->pet_breed,
-            'date_of_birth' => $request->pet_dob,
-        ];
-
-        $changes = $pet->diffProfileAttributes($petData);
-
-        $pet->update($petData);
-
-        $pet->logProfileUpdate($changes, Auth::user(), 'admin_patient_records');
-
         $data = [
             'pet_id' => $pet->id,
-            'title' => 'Medical Record - ' . $request->record_date,
+            'title' => 'Medical Record - '.$request->record_date,
             'diagnosis' => $request->filled('diagnosis') ? trim($request->diagnosis) : null,
             'treatment' => $request->filled('treatment') ? trim($request->treatment) : null,
             'notes' => $request->notes,
@@ -217,17 +259,40 @@ class AdminController extends Controller
             'submission_token' => $request->submission_token,
         ];
 
-        MedicalRecord::create($data);
+        $record = MedicalRecord::create($data);
+
+        $pet->activityLogs()->create([
+            'user_id' => Auth::id(),
+            'action' => 'medical_record_added',
+            'description' => Auth::user()->name.' added a medical record dated '.Carbon::parse($record->record_date)->format('M d, Y').'.',
+            'properties' => [
+                'context' => 'admin_patient_records',
+                'record_id' => $record->id,
+            ],
+        ]);
 
         return redirect()->back()->with('success', 'Medical record added successfully!');
     }
 
     public function deleteMedicalRecord(MedicalRecord $record)
     {
+        $pet = $record->pet;
+        $recordDate = $record->record_date;
+
         if ($record->file_path) {
             Storage::disk('public')->delete($record->file_path);
         }
+
         $record->delete();
+
+        $pet->activityLogs()->create([
+            'user_id' => Auth::id(),
+            'action' => 'medical_record_deleted',
+            'description' => Auth::user()->name.' deleted a medical record dated '.Carbon::parse($recordDate)->format('M d, Y').'.',
+            'properties' => [
+                'context' => 'admin_patient_records',
+            ],
+        ]);
 
         return redirect()->back()->with('success', 'Medical record deleted.');
     }
@@ -243,7 +308,7 @@ class AdminController extends Controller
         ]);
 
         $recordData = [
-            'title' => 'Medical Record - ' . $request->record_date,
+            'title' => 'Medical Record - '.$request->record_date,
             'record_date' => $request->record_date,
             'next_call' => $request->filled('next_call') ? trim($request->next_call) : null,
             'diagnosis' => $request->filled('diagnosis') ? trim($request->diagnosis) : null,
@@ -259,7 +324,7 @@ class AdminController extends Controller
             $record->pet->activityLogs()->create([
                 'user_id' => Auth::id(),
                 'action' => 'medical_record_updated',
-                'description' => Auth::user()->name . ' updated a medical record dated ' . Carbon::parse($record->record_date)->format('M d, Y') . '.',
+                'description' => Auth::user()->name.' updated a medical record dated '.Carbon::parse($record->record_date)->format('M d, Y').'.',
                 'properties' => [
                     'context' => 'admin_patient_records',
                     'record_id' => $record->id,
@@ -274,7 +339,7 @@ class AdminController extends Controller
     public function inquiries(Request $request)
     {
         $status = $request->get('status', '');
-        
+
         $query = Inquiry::query();
 
         if ($status === 'new') {
@@ -293,24 +358,28 @@ class AdminController extends Controller
     public function showInquiry(Inquiry $inquiry)
     {
         $inquiry->markAsRead();
+
         return view('admin.inquiries.show', compact('inquiry'));
     }
 
     public function updateInquiryStatus(Request $request, Inquiry $inquiry)
     {
         $inquiry->update(['status' => $request->status]);
+
         return redirect()->back()->with('success', 'Inquiry status updated.');
     }
 
     public function deleteInquiry(Inquiry $inquiry)
     {
         $inquiry->delete();
+
         return redirect()->route('admin.inquiries.index')->with('success', 'Inquiry deleted successfully.');
     }
 
     public function services(Request $request)
     {
         $services = Service::orderBy('name')->get();
+
         return view('admin.services.index', compact('services'));
     }
 
@@ -333,9 +402,9 @@ class AdminController extends Controller
 
         if ($request->hasFile('image')) {
             $image = $request->file('image');
-            $imageName = time() . '_' . $image->getClientOriginalName();
+            $imageName = time().'_'.$image->getClientOriginalName();
             $image->move(public_path('images/services'), $imageName);
-            $data['image'] = 'images/services/' . $imageName;
+            $data['image'] = 'images/services/'.$imageName;
         }
 
         Service::create($data);
@@ -364,9 +433,9 @@ class AdminController extends Controller
                 unlink(public_path($service->image));
             }
             $image = $request->file('image');
-            $imageName = time() . '_' . $image->getClientOriginalName();
+            $imageName = time().'_'.$image->getClientOriginalName();
             $image->move(public_path('images/services'), $imageName);
-            $data['image'] = 'images/services/' . $imageName;
+            $data['image'] = 'images/services/'.$imageName;
         }
 
         $service->update($data);
@@ -377,6 +446,7 @@ class AdminController extends Controller
     public function deleteService(Service $service)
     {
         $service->delete();
+
         return redirect()->back()->with('success', 'Service deleted.');
     }
 
@@ -389,7 +459,17 @@ class AdminController extends Controller
 
     public function sendReminder(Appointment $appointment)
     {
-        Mail::to($appointment->user->email)->send(new AppointmentReminder($appointment));
+        try {
+            Mail::to($appointment->user->email)->send(new AppointmentReminder($appointment));
+        } catch (Throwable $e) {
+            Log::warning('Appointment reminder email failed.', [
+                'appointment_id' => $appointment->id,
+                'email' => $appointment->user->email,
+                'message' => $e->getMessage(),
+            ]);
+
+            return redirect()->back()->with('error', 'Reminder could not be sent. Please check the mail settings.');
+        }
 
         Reminder::create([
             'user_id' => $appointment->user_id,
@@ -400,7 +480,7 @@ class AdminController extends Controller
             'sent_at' => now(),
         ]);
 
-        return redirect()->back()->with('success', 'Reminder email sent successfully to ' . $appointment->user->email . '!');
+        return redirect()->back()->with('success', 'Reminder email sent successfully to '.$appointment->user->email.'!');
     }
 
     public function destroyAppointment(Appointment $appointment)
@@ -411,10 +491,10 @@ class AdminController extends Controller
 
         $appointment->delete();
 
-        return redirect()->back()->with('success', ucfirst($appointment->status) . ' appointment deleted successfully.');
+        return redirect()->back()->with('success', ucfirst($appointment->status).' appointment deleted successfully.');
     }
 
-    protected function sendAppointmentStatusNotification(Appointment $appointment, string $actionLabel): void
+    protected function sendAppointmentStatusNotification(Appointment $appointment, string $actionLabel): bool
     {
         $recipientEmails = User::admins()
             ->pluck('email')
@@ -424,13 +504,27 @@ class AdminController extends Controller
             ->values();
 
         foreach ($recipientEmails as $email) {
-            Mail::to($email)->send(new AppointmentStatusNotification($appointment, $actionLabel));
+            try {
+                Mail::to($email)->send(new AppointmentStatusNotification($appointment, $actionLabel));
+            } catch (Throwable $e) {
+                Log::warning('Appointment status notification email failed.', [
+                    'appointment_id' => $appointment->id,
+                    'action' => $actionLabel,
+                    'email' => $email,
+                    'message' => $e->getMessage(),
+                ]);
+
+                return false;
+            }
         }
+
+        return true;
     }
 
     public function users()
     {
         $users = User::where('role', 'user')->orderBy('name')->paginate(15);
+
         return view('admin.users.index', compact('users'));
     }
 
@@ -467,36 +561,36 @@ class AdminController extends Controller
     public function userPets(User $user)
     {
         $pets = $user->pets;
-        
+
         if ($pets->isEmpty()) {
             return '<p class="text-gray-500 text-center py-4">No pets found</p>';
         }
-        
+
         $html = '';
         foreach ($pets as $pet) {
             $html .= '<div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">';
             $html .= '<div>';
-            $html .= '<p class="font-medium text-gray-900">' . e($pet->name) . ' (' . e($pet->type) . ')</p>';
-            $html .= '<p class="text-xs text-gray-500">' . e($pet->breed ?? 'No breed') . '</p>';
+            $html .= '<p class="font-medium text-gray-900">'.e($pet->name).' ('.e($pet->type).')</p>';
+            $html .= '<p class="text-xs text-gray-500">'.e($pet->breed ?? 'No breed').'</p>';
             $html .= '</div>';
-            $html .= '<button type="button" class="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-lg hover:bg-red-200" onclick="openDeletePetModal(' . $pet->id . ', \'' . e($pet->name) . '\')">Delete</button>';
+            $html .= '<button type="button" class="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-lg hover:bg-red-200" onclick="openDeletePetModal('.$pet->id.', \''.e($pet->name).'\')">Delete</button>';
             $html .= '</div>';
         }
-        
+
         return $html;
     }
 
     public function deletePet(Pet $pet)
     {
         $pet->delete();
-        
+
         return redirect()->back()->with('success', 'Pet deleted successfully!');
     }
 
     public function deleteReminder(Reminder $reminder)
     {
         $reminder->delete();
-        
+
         return redirect()->back()->with('success', 'Reminder deleted successfully!');
     }
 
@@ -507,14 +601,15 @@ class AdminController extends Controller
         if ($request->search) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
-                $q->where('message', 'like', '%' . $search . '%')
-                  ->orWhereHas('user', function ($q) use ($search) {
-                      $q->where('name', 'like', '%' . $search . '%');
-                  });
+                $q->where('message', 'like', '%'.$search.'%')
+                    ->orWhereHas('user', function ($q) use ($search) {
+                        $q->where('name', 'like', '%'.$search.'%');
+                    });
             });
         }
 
         $feedback = $query->paginate(15);
+
         return view('admin.feedback.index', compact('feedback'));
     }
 
@@ -536,6 +631,7 @@ class AdminController extends Controller
     public function deleteFeedback(Feedback $feedback)
     {
         $feedback->delete();
+
         return redirect()->back()->with('success', 'Feedback deleted successfully!');
     }
 

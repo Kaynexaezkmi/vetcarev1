@@ -2,31 +2,66 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\AppointmentStatusNotification;
 use App\Models\Appointment;
 use App\Models\Pet;
 use App\Models\Service;
 use App\Models\User;
-use App\Mail\AppointmentStatusNotification;
-use Illuminate\Http\Request;
+use App\Support\ServiceCatalog;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\Validator;
+use Illuminate\Contracts\View\View;
 use Illuminate\Database\QueryException;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Throwable;
 
 class AppointmentController extends Controller
 {
-    public function create()
+    public function create(): RedirectResponse|View
     {
-        $services = Service::where('is_active', true)->get();
+        if (Auth::user()->isAdmin()) {
+            return redirect()->route('admin.appointments.index')
+                ->with('error', 'Admins cannot book customer appointments.');
+        }
+
         $pets = Auth::user()->pets()->orderBy('name')->get();
 
-        return view('appointments.create', compact('services', 'pets'));
+        if ($pets->isEmpty()) {
+            return redirect(route('settings').'#pet-profile')
+                ->with('error', 'Please add a pet profile in Settings before booking an appointment.');
+        }
+
+        $services = Service::where('is_active', true)->get();
+        $serviceCatalog = ServiceCatalog::forServices($services);
+        $submittedAppointment = null;
+
+        if (session()->has('submitted_appointment_id')) {
+            $submittedAppointment = Appointment::with(['pet', 'service'])
+                ->where('user_id', Auth::id())
+                ->find(session('submitted_appointment_id'));
+        }
+
+        return view('appointments.create', compact('services', 'serviceCatalog', 'pets', 'submittedAppointment'));
     }
 
-    public function store(Request $request)
+    public function store(Request $request): RedirectResponse
     {
+        if (Auth::user()->isAdmin()) {
+            return redirect()->route('admin.appointments.index')
+                ->with('error', 'Admins cannot book customer appointments.');
+        }
+
+        if (! Auth::user()->pets()->exists()) {
+            return redirect(route('settings').'#pet-profile')
+                ->with('error', 'Please add a pet profile in Settings before booking an appointment.');
+        }
+
         $appointmentTime = $this->normalizeAppointmentTime($request->appointment_time);
 
         $validator = Validator::make($request->all(), [
@@ -39,8 +74,15 @@ class AppointmentController extends Controller
             'appointment_date' => 'required|date|after_or_equal:today',
             'appointment_time' => 'required',
             'reason' => 'nullable|string|required_without:service_id',
+            'appointment_notes' => 'nullable|string|max:500',
+            'payment_proof' => 'nullable|required_without:payment_reference|file|mimes:jpg,jpeg,png,pdf|max:5120',
+            'payment_reference' => 'nullable|required_without:payment_proof|string|max:50',
+            'terms_agreement' => 'accepted',
         ], [
             'reason.required_without' => 'Please specify your reason for visit.',
+            'payment_proof.required_without' => 'Please upload a payment image or enter a GCash reference number.',
+            'payment_reference.required_without' => 'Please upload a payment image or enter a GCash reference number.',
+            'terms_agreement.accepted' => 'Please agree to the Terms and Conditions before confirming your appointment.',
         ]);
 
         if ($validator->fails()) {
@@ -62,8 +104,18 @@ class AppointmentController extends Controller
                 ->with('error', 'This time slot is already booked. Please select another time.');
         }
 
+        $service = $request->filled('service_id')
+            ? Service::find((int) $request->service_id)
+            : null;
+        $serviceAmount = $this->resolveServiceAmount($service);
+        $paymentProofPath = null;
+
         try {
-            Appointment::create([
+            if ($request->hasFile('payment_proof')) {
+                $paymentProofPath = $request->file('payment_proof')->store('payment-proofs', 'public');
+            }
+
+            $appointment = Appointment::create([
                 'user_id' => Auth::id(),
                 'pet_id' => $pet->id,
                 'service_id' => $request->service_id,
@@ -71,8 +123,19 @@ class AppointmentController extends Controller
                 'appointment_time' => $appointmentTime,
                 'reason' => $this->resolveAppointmentReason($request),
                 'status' => 'pending',
+                'notes' => $request->filled('appointment_notes') ? trim((string) $request->appointment_notes) : null,
+                'payment_method' => 'GCash',
+                'payment_reference' => $request->filled('payment_reference') ? trim((string) $request->payment_reference) : null,
+                'payment_proof_path' => $paymentProofPath,
+                'service_amount' => $serviceAmount,
+                'reservation_fee' => $serviceAmount * 0.2,
+                'payment_submitted_at' => now(),
             ]);
         } catch (QueryException $e) {
+            if ($paymentProofPath) {
+                Storage::disk('public')->delete($paymentProofPath);
+            }
+
             if ($this->isAppointmentSlotConflict($e)) {
                 return redirect()->back()
                     ->withInput()
@@ -82,7 +145,9 @@ class AppointmentController extends Controller
             throw $e;
         }
 
-        return redirect()->route('dashboard')->with('success', 'Appointment booked successfully! We will review and confirm your appointment.');
+        return redirect()->route('appointments.create')
+            ->with('submitted_appointment_id', $appointment->id)
+            ->with('success', 'Appointment submitted successfully! We will review and confirm your appointment.');
     }
 
     public function history()
@@ -102,17 +167,18 @@ class AppointmentController extends Controller
         $appointmentTime = $request->filled('appointment_time')
             ? $this->normalizeAppointmentTime($request->appointment_time)
             : null;
-        
-        if ($appointment->user_id !== Auth::id() && !$isAdmin) {
+
+        if ($appointment->user_id !== Auth::id() && ! $isAdmin) {
             abort(403);
         }
 
-        if (!$appointment->canReschedule($isAdmin)) {
+        if (! $appointment->canReschedule($isAdmin)) {
             return redirect()->back()->with('error', 'This appointment cannot be rescheduled.');
         }
 
         if ($request->isMethod('get')) {
             $services = Service::where('is_active', true)->get();
+
             return view('appointments.reschedule', compact('appointment', 'services'));
         }
 
@@ -146,7 +212,7 @@ class AppointmentController extends Controller
                 'appointment_time' => $appointmentTime,
                 'status' => 'pending',
                 'rescheduled' => true,
-                'notes' => $appointment->notes . "\nRescheduled from: " . Carbon::parse($appointment->appointment_date)->format('M d, Y') . ' ' . $appointment->appointment_time,
+                'notes' => $appointment->notes."\nRescheduled from: ".Carbon::parse($appointment->appointment_date)->format('M d, Y').' '.$appointment->appointment_time,
             ]);
         } catch (QueryException $e) {
             if ($this->isAppointmentSlotConflict($e)) {
@@ -161,7 +227,7 @@ class AppointmentController extends Controller
         if ($isAdmin) {
             return redirect()->route('admin.appointments.index')->with('success', 'Appointment rescheduled successfully!');
         }
-        
+
         return redirect()->route('dashboard')->with('success', 'Appointment rescheduled successfully!');
     }
 
@@ -179,12 +245,17 @@ class AppointmentController extends Controller
             'status' => 'cancelled',
             'cancellation_reason' => $request->reason,
             'cancelled_by' => 'owner',
-            'notes' => trim(($appointment->notes ? $appointment->notes . "\n" : '') . 'Cancellation reason: ' . $request->reason),
+            'notes' => trim(($appointment->notes ? $appointment->notes."\n" : '').'Cancellation reason: '.$request->reason),
         ]);
 
-        $this->sendAppointmentStatusNotification($appointment->fresh(['pet', 'user', 'service']), 'Cancelled');
+        $notificationSent = $this->sendAppointmentStatusNotification($appointment->fresh(['pet', 'user', 'service']), 'Cancelled');
 
-        return redirect()->back()->with('success', 'Appointment cancelled and email notification sent.');
+        return redirect()->back()->with(
+            $notificationSent ? 'success' : 'error',
+            $notificationSent
+                ? 'Appointment cancelled and email notification sent.'
+                : 'Appointment cancelled, but the email notification could not be sent. Please check the mail settings.'
+        );
     }
 
     public function destroy(Appointment $appointment)
@@ -205,8 +276,8 @@ class AppointmentController extends Controller
     public function getAppointmentsByDate(Request $request)
     {
         $date = $request->get('date');
-        
-        if (!$date) {
+
+        if (! $date) {
             return response()->json(['error' => 'Date is required'], 400);
         }
 
@@ -248,7 +319,7 @@ class AppointmentController extends Controller
         ]);
     }
 
-    protected function sendAppointmentStatusNotification(Appointment $appointment, string $actionLabel): void
+    protected function sendAppointmentStatusNotification(Appointment $appointment, string $actionLabel): bool
     {
         $recipientEmails = User::admins()
             ->pluck('email')
@@ -258,8 +329,21 @@ class AppointmentController extends Controller
             ->values();
 
         foreach ($recipientEmails as $email) {
-            Mail::to($email)->send(new AppointmentStatusNotification($appointment, $actionLabel));
+            try {
+                Mail::to($email)->send(new AppointmentStatusNotification($appointment, $actionLabel));
+            } catch (Throwable $e) {
+                Log::warning('Appointment status notification email failed.', [
+                    'appointment_id' => $appointment->id,
+                    'action' => $actionLabel,
+                    'email' => $email,
+                    'message' => $e->getMessage(),
+                ]);
+
+                return false;
+            }
         }
+
+        return true;
     }
 
     protected function resolveAppointmentReason(Request $request): string
@@ -274,11 +358,23 @@ class AppointmentController extends Controller
             $service = Service::find($request->service_id);
 
             if ($service) {
-                return 'Service appointment: ' . $service->name;
+                return 'Service appointment: '.$service->name;
             }
         }
 
         return 'General consultation';
+    }
+
+    protected function resolveServiceAmount(?Service $service): float
+    {
+        if (! $service) {
+            return 0.0;
+        }
+
+        $catalogService = ServiceCatalog::forServices(collect([$service]))
+            ->firstWhere('service_id', $service->id);
+
+        return (float) ($catalogService['booking_amount'] ?? $service->price ?? 0);
     }
 
     protected function normalizeAppointmentTime(string $appointmentTime): string

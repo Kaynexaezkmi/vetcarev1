@@ -198,7 +198,7 @@ function openDateModal(date) {
     document.getElementById('modalDateTitle').textContent = 'Appointments - ' + formatDate(date);
     document.getElementById('modalContent').innerHTML = '<p class="text-gray-500 text-center py-4">Loading...</p>';
     
-    fetch('/api/appointments/by-date?date=' + date)
+    fetch('/appointments/by-date?date=' + date)
         .then(response => response.json())
         .then(data => {
             if (data.appointments.length === 0) {
@@ -263,7 +263,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 right: 'dayGridMonth,timeGridWeek,timeGridDay'
             },
             events: function(info, successCallback, failureCallback) {
-                fetch('/api/appointments/calendar')
+                fetch('/appointments/calendar-events')
                     .then(response => response.json())
                     .then(data => {
                         const events = data.map(apt => ({
@@ -304,7 +304,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function loadAppointmentCounts(start, end) {
-    fetch('/api/appointments/calendar?start=' + start.toISOString().split('T')[0] + '&end=' + end.toISOString().split('T')[0])
+    fetch('/appointments/calendar-events?start=' + start.toISOString().split('T')[0] + '&end=' + end.toISOString().split('T')[0])
         .then(response => response.json())
         .then(data => {
             data.forEach(apt => {

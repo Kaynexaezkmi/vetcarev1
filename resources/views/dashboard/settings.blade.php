@@ -17,6 +17,12 @@
     </div>
     @endif
 
+    @if(session('error'))
+    <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        {{ session('error') }}
+    </div>
+    @endif
+
     @if($errors->any())
     <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-700">
         <ul class="list-disc list-inside text-sm space-y-1">
@@ -27,6 +33,7 @@
     </div>
     @endif
 
+    @unless(Auth::user()->isAdmin())
     <div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm md:p-5">
         <div class="mb-4 flex items-start justify-between gap-3">
             <div>
@@ -77,7 +84,7 @@
         </form>
     </div>
 
-    <div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm md:p-5">
+    <div id="pet-profile" class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm md:p-5">
         <div class="mb-4">
             <h3 class="text-base font-semibold text-gray-900">Pet Profile</h3>
             <p class="text-sm text-gray-500 mt-1">Manage your pet details here.</p>
@@ -219,9 +226,10 @@
         </div>
         @endif
     </div>
+    @endunless
 </div>
 
-@if($pets->isNotEmpty())
+@if(! Auth::user()->isAdmin() && $pets->isNotEmpty())
 <div id="deletePetModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-gray-900/60 px-4">
     <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
         <div class="flex items-start justify-between gap-4">
@@ -256,7 +264,7 @@
 @endif
 @endsection
 
-@if($pets->isNotEmpty())
+@if(! Auth::user()->isAdmin() && $pets->isNotEmpty())
 @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function () {

@@ -2,11 +2,10 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Carbon\Carbon;
-use Illuminate\Database\QueryException;
 
 class Appointment extends Model
 {
@@ -24,11 +23,20 @@ class Appointment extends Model
         'cancellation_reason',
         'cancelled_by',
         'notes',
+        'payment_method',
+        'payment_reference',
+        'payment_proof_path',
+        'service_amount',
+        'reservation_fee',
+        'payment_submitted_at',
     ];
 
     protected $casts = [
         'appointment_date' => 'date',
         'rescheduled' => 'boolean',
+        'service_amount' => 'decimal:2',
+        'reservation_fee' => 'decimal:2',
+        'payment_submitted_at' => 'datetime',
     ];
 
     protected static function booted(): void
@@ -92,17 +100,18 @@ class Appointment extends Model
     public function canReschedule($isAdmin = false): bool
     {
         if ($isAdmin) {
-            return in_array($this->status, ['pending', 'approved']) && !$this->rescheduled;
+            return in_array($this->status, ['pending', 'approved']) && ! $this->rescheduled;
         }
-        return $this->status === 'pending' && !$this->rescheduled;
+
+        return $this->status === 'pending' && ! $this->rescheduled;
     }
 
     public function scopeUpcoming($query)
     {
         return $query->where('appointment_date', '>=', now()->toDateString())
-                    ->whereIn('status', ['pending', 'approved'])
-                    ->orderBy('appointment_date')
-                    ->orderBy('appointment_time');
+            ->whereIn('status', ['pending', 'approved'])
+            ->orderBy('appointment_date')
+            ->orderBy('appointment_time');
     }
 
     public function scopeByUser($query, $userId)
@@ -118,28 +127,28 @@ class Appointment extends Model
     public function scopeBookedSlots($query, $date)
     {
         return $query->where('appointment_date', $date)
-                    ->whereIn('status', ['pending', 'approved'])
-                    ->pluck('appointment_time')
-                    ->map(fn ($time) => Carbon::parse($time)->format('H:i'))
-                    ->unique()
-                    ->toArray();
+            ->whereIn('status', ['pending', 'approved'])
+            ->pluck('appointment_time')
+            ->map(fn ($time) => Carbon::parse($time)->format('H:i'))
+            ->unique()
+            ->toArray();
     }
 
     public function shouldBlockSlot(): bool
     {
         return in_array($this->status, ['pending', 'approved'], true)
-            && !empty($this->appointment_date)
-            && !empty($this->appointment_time);
+            && ! empty($this->appointment_date)
+            && ! empty($this->appointment_time);
     }
 
     public function buildSlotGuard(): ?string
     {
-        if (!$this->shouldBlockSlot()) {
+        if (! $this->shouldBlockSlot()) {
             return null;
         }
 
         return Carbon::parse($this->appointment_date)->toDateString()
-            . ' '
-            . Carbon::parse($this->appointment_time)->format('H:i:s');
+            .' '
+            .Carbon::parse($this->appointment_time)->format('H:i:s');
     }
 }

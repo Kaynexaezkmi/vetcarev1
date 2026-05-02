@@ -2,154 +2,219 @@
 @section('title', 'Appointments - VetCare Admin')
 @section('header-title', 'Appointment Management')
 
+@php
+    $appointmentsForModal = $appointments->getCollection()->map(function ($appointment) {
+        $serviceAmount = (float) ($appointment->service_amount ?: $appointment->service?->price ?: 0);
+        $reservationFee = (float) ($appointment->reservation_fee ?: ($serviceAmount * 0.2));
+        $paymentProofPath = $appointment->payment_proof_path;
+        $proofExtension = $paymentProofPath ? strtolower(pathinfo($paymentProofPath, PATHINFO_EXTENSION)) : null;
+
+        return [
+            'id' => $appointment->id,
+            'pet' => $appointment->pet?->name ?? '-',
+            'owner' => $appointment->user?->name ?? '-',
+            'service' => $appointment->service?->name ?? 'General Checkup',
+            'service_id' => $appointment->service_id,
+            'date' => $appointment->appointment_date?->format('Y-m-d'),
+            'date_label' => $appointment->appointment_date?->format('M d, Y') ?? '-',
+            'time' => \Carbon\Carbon::parse($appointment->appointment_time)->format('H:i'),
+            'time_label' => \Carbon\Carbon::parse($appointment->appointment_time)->format('h:i A'),
+            'status' => $appointment->status_label,
+            'status_key' => $appointment->status,
+            'status_class' => $appointment->status_badge_class,
+            'service_amount' => $serviceAmount,
+            'reservation_fee' => $reservationFee,
+            'payment_method' => $appointment->payment_method ?: 'GCash',
+            'payment_reference' => $appointment->payment_reference ?: 'Not provided',
+            'payment_submitted_at' => $appointment->payment_submitted_at?->format('M d, Y - h:i A') ?? $appointment->created_at?->format('M d, Y - h:i A'),
+            'payment_proof_url' => $paymentProofPath ? asset('storage/'.$paymentProofPath) : null,
+            'payment_proof_name' => $paymentProofPath ? basename($paymentProofPath) : null,
+            'payment_proof_is_image' => in_array($proofExtension, ['jpg', 'jpeg', 'png', 'gif', 'webp'], true),
+            'approve_url' => route('admin.appointments.approve', $appointment),
+            'reject_url' => route('admin.appointments.reject', $appointment),
+            'reschedule_url' => route('admin.appointments.reschedule', $appointment),
+            'complete_url' => route('admin.appointments.complete', $appointment),
+            'records_url' => route('admin.patients.records', $appointment->pet),
+            'delete_form_id' => 'deleteAppointmentForm'.$appointment->id,
+        ];
+    })->values();
+@endphp
+
 @section('content')
+<style>
+    .appointment-modal-backdrop {
+        align-items: center;
+        background: rgba(17, 24, 39, 0.62);
+        inset: 0;
+        justify-content: center;
+        padding: 16px;
+        position: fixed;
+        z-index: 50;
+    }
+
+    .appointment-modal-panel {
+        background: #fff;
+        border-radius: 14px;
+        box-shadow: 0 25px 55px rgba(15, 23, 42, 0.28);
+        max-height: 92vh;
+        overflow-y: auto;
+        padding: 20px;
+        width: min(100%, 460px);
+    }
+
+    .appointment-modal-panel--payment {
+        width: min(100%, 760px);
+    }
+
+    .appointment-modal-panel--history {
+        width: min(100%, 860px);
+    }
+
+    .appointment-detail-row {
+        align-items: center;
+        border-bottom: 1px solid #eef2f7;
+        display: grid;
+        gap: 12px;
+        grid-template-columns: 128px minmax(0, 1fr);
+        padding: 8px 0;
+    }
+
+    .appointment-detail-row:last-child {
+        border-bottom: 0;
+        padding-bottom: 0;
+    }
+
+    .appointment-detail-label {
+        color: #667085;
+        font-size: 13px;
+    }
+
+    .appointment-detail-value {
+        color: #111827;
+        font-size: 13px;
+        font-weight: 700;
+    }
+
+    .appointment-filter-control {
+        height: 34px;
+        max-width: 100%;
+        padding-bottom: 6px !important;
+        padding-top: 6px !important;
+    }
+
+    .appointment-filter-form {
+        align-items: center;
+        display: grid;
+        gap: 8px;
+        grid-template-columns: 160px 170px minmax(220px, 1fr) 92px auto;
+    }
+
+    .appointment-history-button {
+        height: 34px;
+        white-space: nowrap;
+    }
+
+    @media (max-width: 640px) {
+        .appointment-detail-row {
+            grid-template-columns: 1fr;
+            gap: 3px;
+        }
+
+        .appointment-filter-form {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    @media (min-width: 641px) and (max-width: 1180px) {
+        .appointment-filter-form {
+            grid-template-columns: 1fr 1fr;
+        }
+    }
+</style>
+
 @if(session('success'))
-<div class="mb-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl">
-    {{ session('success') }}
-</div>
+<div class="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{{ session('success') }}</div>
 @endif
 
 @if(session('error'))
-<div class="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl">
-    {{ session('error') }}
+<div class="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{{ session('error') }}</div>
+@endif
+
+@if($errors->any())
+<div class="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+    {{ $errors->first() }}
 </div>
 @endif
 
-<div class="bg-white rounded-xl shadow-sm">
-    <div class="p-4 md:p-6 border-b border-gray-200">
-        <div class="flex flex-col md:flex-row md:items-center gap-3 md:gap-4">
-            <h3 class="text-base md:text-lg font-semibold text-gray-900">All Appointments</h3>
-            <button type="button" onclick="openHistoryModal()" class="md:hidden px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm w-full md:w-auto">History</button>
-            <button type="button" onclick="openHistoryModal()" class="hidden md:block px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">Appointment History</button>
-        </div>
-        
-        <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-            <select name="status" class="px-3 py-2 rounded-lg border border-gray-300 text-sm" onchange="this.form.submit()">
+<div class="rounded-xl border border-gray-200 bg-white shadow-sm">
+    <div class="border-b border-gray-100 px-4 py-3">
+        <form method="GET" action="{{ route('admin.appointments.index') }}" class="appointment-filter-form">
+            <select name="status" class="appointment-filter-control w-full rounded-lg border border-gray-300 px-3 text-sm" onchange="this.form.submit()">
                 <option value="">All Status</option>
-                <option value="pending" {{ request('status') == 'pending' ? 'selected' : '' }}>Pending</option>
-                <option value="approved" {{ request('status') == 'approved' ? 'selected' : '' }}>Approved</option>
+                @foreach(['pending' => 'Pending', 'approved' => 'Approved', 'rejected' => 'Rejected', 'cancelled' => 'Cancelled'] as $value => $label)
+                <option value="{{ $value }}" @selected(request('status') === $value)>{{ $label }}</option>
+                @endforeach
             </select>
-            <input type="date" name="date" value="{{ request('date') }}" class="px-3 py-2 rounded-lg border border-gray-300 text-sm" onchange="this.form.submit()">
-            <input type="text" name="search" value="{{ request('search') }}" placeholder="Search pet or owner..." class="px-3 py-2 rounded-lg border border-gray-300 text-sm" onchange="this.form.submit()">
-        </div>
+            <input type="date" name="date" value="{{ request('date') }}" class="appointment-filter-control w-full rounded-lg border border-gray-300 px-3 text-sm" onchange="this.form.submit()">
+            <input type="text" name="search" value="{{ request('search') }}" placeholder="Search pet, owner, or service..." class="appointment-filter-control w-full rounded-lg border border-gray-300 px-3 text-sm">
+            <button type="submit" class="appointment-filter-control rounded-lg bg-gray-900 px-4 text-sm font-semibold text-white hover:bg-gray-800">Search</button>
+            <button type="button" class="appointment-history-button rounded-lg border border-orange-200 bg-orange-50 px-4 text-sm font-semibold text-orange-700 hover:bg-orange-100" data-action="history">
+                Appointment History ({{ $completedAppointments->count() }})
+            </button>
+        </form>
     </div>
-    
-    <div class="md:hidden p-4 space-y-3">
-        @forelse($appointments as $appointment)
-        <div class="border border-gray-200 rounded-xl p-4">
-            <div class="flex items-start justify-between mb-3">
-                <div>
-                    <p class="font-medium text-gray-900">{{ $appointment->pet->name }}</p>
-                    <p class="text-xs text-gray-500">{{ $appointment->user->name }}</p>
-                </div>
-                <span class="inline-flex px-2 py-1 text-xs font-medium rounded-full {{ $appointment->status_badge_class }}">
-                    {{ $appointment->status_label }}
-                </span>
-            </div>
-            <p class="text-sm text-gray-600 mb-1">{{ $appointment->service ? $appointment->service->name : 'General Checkup' }}</p>
-            <p class="text-xs text-gray-500 mb-3">{{ Carbon\Carbon::parse($appointment->appointment_date)->format('M d, Y') }} at {{ Carbon\Carbon::parse($appointment->appointment_time)->format('h:i A') }}</p>
-            @if($appointment->cancellation_reason)
-            <p class="text-xs text-red-600 mb-3">Reason: {{ $appointment->cancellation_reason }}</p>
-            @endif
-            <div class="flex flex-wrap gap-2">
-                @if($appointment->status === 'pending')
-                <form action="{{ route('admin.appointments.approve', $appointment) }}" method="POST" class="flex-1">
-                    @csrf @method('PUT')
-                    <button type="submit" class="w-full text-xs bg-green-500 text-white px-3 py-2 rounded-lg hover:bg-green-600">Approve</button>
-                </form>
-                <button type="button" onclick="openRejectModal({{ $appointment->id }}, '{{ $appointment->pet->name }}', '{{ Carbon\Carbon::parse($appointment->appointment_date)->format('M d, Y') }}', '{{ Carbon\Carbon::parse($appointment->appointment_time)->format('h:i A') }}')" class="flex-1 text-xs bg-red-500 text-white px-3 py-2 rounded-lg hover:bg-red-600">Reject</button>
-                @elseif($appointment->status === 'approved')
-                <form action="{{ route('admin.appointments.complete', $appointment) }}" method="POST" class="flex-1">
-                    @csrf @method('PUT')
-                    <button type="submit" class="w-full text-xs bg-green-500 text-white px-3 py-2 rounded-lg hover:bg-green-600">Complete</button>
-                </form>
-                <a href="{{ route('appointments.reschedule', $appointment) }}" class="flex-1 text-center text-xs bg-blue-500 text-white px-3 py-2 rounded-lg hover:bg-blue-600">Reschedule</a>
-                <form action="{{ route('admin.appointments.reminder', $appointment) }}" method="POST" class="flex-1">
-                    @csrf
-                    <button type="submit" class="w-full text-xs bg-purple-500 text-white px-3 py-2 rounded-lg hover:bg-purple-600">Remind</button>
-                </form>
-                @elseif($appointment->status === 'completed')
-                <a href="{{ route('admin.patients.records', $appointment->pet) }}" class="flex-1 text-center text-xs bg-orange-100 text-orange-700 px-3 py-2 rounded-lg hover:bg-orange-200">View Records</a>
-                @elseif(in_array($appointment->status, ['cancelled', 'rejected']))
-                <span class="flex-1 text-center text-xs text-gray-400 py-2">{{ $appointment->status_label }}</span>
-                @if(in_array($appointment->status, ['cancelled', 'rejected']))
-                <form action="{{ route('admin.appointments.destroy', $appointment) }}" method="POST" class="inline-flex" id="deleteAppointmentFormMobile{{ $appointment->id }}">
-                    @csrf
-                    @method('DELETE')
-                    <button type="button" class="inline-flex items-center justify-center rounded-lg border border-red-200 bg-red-50 p-2 text-red-600 hover:bg-red-100" onclick="openDeleteAppointmentModal('deleteAppointmentFormMobile{{ $appointment->id }}', '{{ addslashes($appointment->pet->name) }}', '{{ addslashes($appointment->user->name) }}', '{{ Carbon\Carbon::parse($appointment->appointment_date)->format('M d, Y') }}', '{{ Carbon\Carbon::parse($appointment->appointment_time)->format('h:i A') }}', '{{ $appointment->status_label }}')" title="Delete appointment" aria-label="Delete appointment">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-                        </svg>
-                    </button>
-                </form>
-                @endif
-                @endif
-            </div>
-        </div>
-        @empty
-        <p class="text-center text-gray-500 py-8">No appointments found</p>
-        @endforelse
-    </div>
-    
-    <div class="hidden md:block overflow-x-auto">
-        <table class="w-full">
+
+    <div class="overflow-x-auto">
+        <table class="w-full min-w-[860px]">
             <thead class="bg-gray-50">
                 <tr>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Pet / Owner</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Service</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date & Time</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Pet / Owner</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Service</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Schedule</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Status</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Actions</th>
                 </tr>
             </thead>
-            <tbody class="divide-y divide-gray-200">
+            <tbody class="divide-y divide-gray-100">
                 @forelse($appointments as $appointment)
-                <tr class="hover:bg-gray-50">
-                    <td class="px-6 py-4">
-                        <p class="font-medium text-gray-900">{{ $appointment->pet->name }}</p>
+                <tr class="hover:bg-gray-50/70">
+                    <td class="px-4 py-3">
+                        <p class="text-sm font-semibold text-gray-900">{{ $appointment->pet->name }}</p>
                         <p class="text-xs text-gray-500">{{ $appointment->user->name }}</p>
                     </td>
-                    <td class="px-6 py-4 text-sm text-gray-600">
-                        {{ $appointment->service ? $appointment->service->name : 'General Checkup' }}
+                    <td class="px-4 py-3 text-sm text-gray-700">{{ $appointment->service?->name ?? 'General Checkup' }}</td>
+                    <td class="px-4 py-3">
+                        <p class="text-sm font-medium text-gray-900">{{ $appointment->appointment_date->format('M d, Y') }}</p>
+                        <p class="text-xs text-gray-500">{{ \Carbon\Carbon::parse($appointment->appointment_time)->format('h:i A') }}</p>
                     </td>
-                    <td class="px-6 py-4">
-                        <p class="text-sm font-medium text-gray-900">{{ Carbon\Carbon::parse($appointment->appointment_date)->format('M d, Y') }}</p>
-                        <p class="text-xs text-gray-500">{{ Carbon\Carbon::parse($appointment->appointment_time)->format('h:i A') }}</p>
+                    <td class="px-4 py-3">
+                        <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold {{ $appointment->status_badge_class }}">{{ $appointment->status_label }}</span>
                     </td>
-                    <td class="px-6 py-4">
-                        <span class="inline-flex px-3 py-1 text-xs font-medium rounded-full {{ $appointment->status_badge_class }}">
-                            {{ $appointment->status_label }}
-                        </span>
-                    </td>
-                    <td class="px-6 py-4">
-                        <div class="flex items-center space-x-2">
+                    <td class="px-4 py-3">
+                        <div class="flex flex-wrap gap-2">
                             @if($appointment->status === 'pending')
-                            <form action="{{ route('admin.appointments.approve', $appointment) }}" method="POST" class="inline">
-                                @csrf @method('PUT')
-                                <button type="submit" class="text-xs bg-green-500 text-white px-3 py-1 rounded-lg hover:bg-green-600">Approve</button>
-                            </form>
-                            <button type="button" onclick="openRejectModal({{ $appointment->id }}, '{{ $appointment->pet->name }}', '{{ Carbon\Carbon::parse($appointment->appointment_date)->format('M d, Y') }}', '{{ Carbon\Carbon::parse($appointment->appointment_time)->format('h:i A') }}')" class="text-xs bg-red-500 text-white px-3 py-1 rounded-lg hover:bg-red-600">Reject</button>
+                            <button type="button" class="rounded-md bg-green-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-600" data-action="approve" data-appointment-id="{{ $appointment->id }}">Approve</button>
+                            <button type="button" class="rounded-md bg-red-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-600" data-action="reject" data-appointment-id="{{ $appointment->id }}">Reject</button>
                             @elseif($appointment->status === 'approved')
-                            <form action="{{ route('admin.appointments.complete', $appointment) }}" method="POST" class="inline">
-                                @csrf @method('PUT')
-                                <button type="submit" class="text-xs bg-green-500 text-white px-3 py-1 rounded-lg hover:bg-green-600">Complete</button>
-                            </form>
-                            <a href="{{ route('appointments.reschedule', $appointment) }}" class="text-xs bg-blue-500 text-white px-3 py-1 rounded-lg hover:bg-blue-600">Reschedule</a>
-                            <form action="{{ route('admin.appointments.reminder', $appointment) }}" method="POST" class="inline">
+                            <form action="{{ route('admin.appointments.complete', $appointment) }}" method="POST">
                                 @csrf
-                                <button type="submit" class="text-xs bg-purple-500 text-white px-3 py-1 rounded-lg hover:bg-purple-600">Remind</button>
+                                @method('PUT')
+                                <button type="submit" class="rounded-md bg-green-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-600">Complete</button>
                             </form>
                             @endif
-                            <a href="{{ route('admin.patients.records', $appointment->pet) }}" class="text-xs bg-orange-100 text-orange-700 px-3 py-1 rounded-lg hover:bg-orange-200">Records</a>
-                            @if(in_array($appointment->status, ['cancelled', 'rejected']))
-                            <form action="{{ route('admin.appointments.destroy', $appointment) }}" method="POST" class="inline" id="deleteAppointmentFormDesktop{{ $appointment->id }}">
+
+                            @if($appointment->canReschedule(true))
+                            <button type="button" class="rounded-md bg-orange-100 px-3 py-1.5 text-xs font-semibold text-orange-700 hover:bg-orange-200" data-action="reschedule" data-appointment-id="{{ $appointment->id }}">Reschedule</button>
+                            @endif
+
+                            <button type="button" class="rounded-md bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100" data-action="payment" data-appointment-id="{{ $appointment->id }}">View Payment</button>
+                            <a href="{{ route('admin.patients.records', $appointment->pet) }}" class="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200">Records</a>
+
+                            @if(in_array($appointment->status, ['cancelled', 'rejected'], true))
+                            <form action="{{ route('admin.appointments.destroy', $appointment) }}" method="POST" id="deleteAppointmentForm{{ $appointment->id }}">
                                 @csrf
                                 @method('DELETE')
-                                <button type="button" class="inline-flex items-center justify-center rounded-lg border border-red-200 bg-red-50 p-2 text-red-600 hover:bg-red-100" onclick="openDeleteAppointmentModal('deleteAppointmentFormDesktop{{ $appointment->id }}', '{{ addslashes($appointment->pet->name) }}', '{{ addslashes($appointment->user->name) }}', '{{ Carbon\Carbon::parse($appointment->appointment_date)->format('M d, Y') }}', '{{ Carbon\Carbon::parse($appointment->appointment_time)->format('h:i A') }}', '{{ $appointment->status_label }}')" title="Delete appointment" aria-label="Delete appointment">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-                                    </svg>
-                                </button>
+                                <button type="button" class="rounded-md bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100" data-action="delete" data-appointment-id="{{ $appointment->id }}">Delete</button>
                             </form>
                             @endif
                         </div>
@@ -157,107 +222,209 @@
                 </tr>
                 @empty
                 <tr>
-                    <td colspan="5" class="px-6 py-12 text-center">
-                        <p class="text-gray-500">No appointments found</p>
-                    </td>
+                    <td colspan="5" class="px-4 py-10 text-center text-sm text-gray-500">No appointments found.</td>
                 </tr>
                 @endforelse
             </tbody>
         </table>
     </div>
-    
+
     @if($appointments->hasPages())
-    <div class="px-4 md:px-6 py-4 border-t border-gray-200">
-        {{ $appointments->links() }}
-    </div>
+    <div class="border-t border-gray-100 px-4 py-3">{{ $appointments->links() }}</div>
     @endif
 </div>
 
-<div id="rejectModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 p-4">
-    <div class="bg-white rounded-2xl p-4 md:p-6 w-full max-w-md">
-        <h3 class="text-lg font-semibold text-gray-900 mb-2">Reject Appointment</h3>
-        <p class="text-gray-600 mb-4">Please provide a reason for rejecting this appointment.</p>
-        <div class="bg-gray-50 rounded-lg p-3 mb-4">
-            <p class="text-sm text-gray-700"><strong>Pet:</strong> <span id="rejectPetName"></span></p>
-            <p class="text-sm text-gray-700"><strong>Date:</strong> <span id="rejectDate"></span></p>
-            <p class="text-sm text-gray-700"><strong>Time:</strong> <span id="rejectTime"></span></p>
+<div id="modalBackdrop" class="appointment-modal-backdrop hidden">
+    <div id="approveModal" class="appointment-modal-panel hidden">
+        <div class="flex justify-end"><button type="button" class="text-gray-400 hover:text-gray-700" data-close-modal>&times;</button></div>
+        <div class="text-center">
+            <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full border-2 border-green-400 text-green-500">
+                <svg class="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m5 13 4 4L19 7"></path></svg>
+            </div>
+            <h3 class="mt-3 text-xl font-bold text-gray-950">Approve Appointment</h3>
+            <p class="mt-2 text-sm text-gray-600">This will confirm the appointment and notify the pet owner.</p>
         </div>
-        <form id="rejectForm" method="POST">
-            @csrf @method('PUT')
-            <textarea name="reason" rows="4" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm mb-4" placeholder="Enter the reason for rejection"></textarea>
-            <div class="flex flex-col md:flex-row justify-end gap-2 md:space-x-3">
-                <button type="button" onclick="closeRejectModal()" class="px-4 py-2 text-gray-600 hover:text-gray-800 w-full md:w-auto">Close</button>
-                <button type="submit" class="px-6 py-2 bg-red-500 text-white font-medium rounded-lg hover:bg-red-600 w-full md:w-auto">Reject Appointment</button>
+        <div class="mt-4 rounded-lg border border-green-100 bg-green-50/60 p-3">
+            <p class="mb-2 text-sm font-bold text-green-700">Appointment Details</p>
+            <div class="space-y-2 text-sm" data-detail-list></div>
+        </div>
+        <form id="approveForm" method="POST" class="mt-4 flex items-center justify-between gap-3">
+            @csrf
+            @method('PUT')
+            <button type="button" class="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50" data-close-modal>Cancel</button>
+            <button type="submit" class="rounded-lg bg-green-500 px-4 py-2 text-sm font-semibold text-white hover:bg-green-600">Approve Appointment</button>
+        </form>
+    </div>
+
+    <div id="rejectModal" class="appointment-modal-panel hidden">
+        <div class="flex justify-end"><button type="button" class="text-gray-400 hover:text-gray-700" data-close-modal>&times;</button></div>
+        <div class="text-center">
+            <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full border-2 border-red-400 text-red-500">
+                <svg class="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18 18 6M6 6l12 12"></path></svg>
+            </div>
+            <h3 class="mt-3 text-xl font-bold text-gray-950">Reject Appointment</h3>
+            <p class="mt-2 text-sm text-gray-600">This reason will be visible to the pet owner.</p>
+        </div>
+        <div class="mt-4 rounded-lg border border-red-100 bg-red-50/50 p-3">
+            <p class="mb-2 text-sm font-bold text-red-600">Appointment Details</p>
+            <div class="space-y-2 text-sm" data-detail-list></div>
+        </div>
+        <form id="rejectForm" method="POST" class="mt-4">
+            @csrf
+            @method('PUT')
+            <label class="mb-2 block text-sm font-semibold text-gray-800">Reason for rejection *</label>
+            <textarea name="reason" rows="4" maxlength="250" required class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-red-400 focus:ring-red-400" placeholder="Enter reason for rejection..."></textarea>
+            <div class="mt-4 flex items-center justify-between gap-3">
+                <button type="button" class="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50" data-close-modal>Cancel</button>
+                <button type="submit" class="rounded-lg bg-red-500 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600">Reject Appointment</button>
             </div>
         </form>
     </div>
-</div>
 
-<div id="historyModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 p-2 md:p-4">
-    <div class="bg-white rounded-2xl p-4 md:p-6 w-full max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
-        <div class="flex justify-between items-center mb-4">
-            <h3 class="text-lg font-semibold text-gray-900">Appointment History</h3>
-            <button onclick="closeHistoryModal()" class="text-gray-400 hover:text-gray-600">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                </svg>
-            </button>
-        </div>
-        <div class="overflow-auto flex-1">
-            <div class="md:hidden space-y-3">
-                @forelse($completedAppointments as $appointment)
-                <div class="border border-gray-200 rounded-xl p-4">
-                    <div class="flex items-start justify-between mb-2">
-                        <div>
-                            <p class="font-medium text-gray-900">{{ $appointment->pet->name }}</p>
-                            <p class="text-xs text-gray-500">{{ $appointment->user->name }}</p>
-                        </div>
-                        <span class="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700">Completed</span>
-                    </div>
-                    <p class="text-sm text-gray-600">{{ $appointment->service ? $appointment->service->name : 'General Checkup' }}</p>
-                    <p class="text-xs text-gray-500">{{ Carbon\Carbon::parse($appointment->appointment_date)->format('M d, Y') }}</p>
-                    <a href="{{ route('admin.patients.records', $appointment->pet) }}" class="mt-2 block text-center text-xs bg-orange-100 text-orange-700 px-3 py-2 rounded-lg hover:bg-orange-200">View Records</a>
-                </div>
-                @empty
-                <p class="text-center text-gray-500 py-8">No completed appointments</p>
-                @endforelse
+    <div id="rescheduleModal" class="appointment-modal-panel hidden">
+        <div class="flex justify-end"><button type="button" class="text-gray-400 hover:text-gray-700" data-close-modal>&times;</button></div>
+        <div class="text-center">
+            <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full border-2 border-orange-400 text-orange-500">
+                <svg class="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3M5 11h14M7 21h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2Z"></path></svg>
             </div>
-            <table class="hidden md:table w-full">
-                <thead class="bg-gray-50 sticky top-0">
+            <h3 class="mt-3 text-xl font-bold text-gray-950">Reschedule Appointment</h3>
+            <p class="mt-2 text-sm text-gray-600">Select a new date & time and provide a reason for rescheduling.</p>
+        </div>
+        <div class="mt-4 rounded-lg border border-orange-100 bg-orange-50/50 p-3">
+            <p class="mb-2 text-sm font-bold text-orange-600">Appointment Details</p>
+            <div class="space-y-2 text-sm" data-detail-list></div>
+        </div>
+        <form id="rescheduleForm" method="POST" class="mt-4">
+            @csrf
+            @method('PUT')
+            <div class="grid gap-3 sm:grid-cols-2">
+                <div>
+                    <label class="mb-1 block text-sm font-semibold text-gray-800">New Date *</label>
+                    <input type="date" name="appointment_date" id="rescheduleDate" min="{{ now()->toDateString() }}" required class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-orange-400 focus:ring-orange-400">
+                </div>
+                <div>
+                    <label class="mb-1 block text-sm font-semibold text-gray-800">New Time *</label>
+                    <select name="appointment_time" id="rescheduleTime" required class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-orange-400 focus:ring-orange-400">
+                        <option value="">Select date first</option>
+                    </select>
+                </div>
+            </div>
+            <label class="mb-1 mt-3 block text-sm font-semibold text-gray-800">Reason for rescheduling *</label>
+            <textarea name="reason" id="rescheduleReason" rows="4" maxlength="250" required class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-orange-400 focus:ring-orange-400" placeholder="Enter reason for rescheduling..."></textarea>
+            <p class="-mt-1 text-right text-xs text-gray-500"><span id="rescheduleReasonCount">0</span> / 250</p>
+            <div class="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700">
+                The pet owner will be notified about the new schedule.
+            </div>
+            <div class="mt-4 flex items-center justify-between gap-3">
+                <button type="button" class="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50" data-close-modal>Cancel</button>
+                <button type="submit" class="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600">Reschedule Appointment</button>
+            </div>
+        </form>
+    </div>
+
+    <div id="paymentModal" class="appointment-modal-panel appointment-modal-panel--payment hidden">
+        <div class="flex justify-end"><button type="button" class="text-gray-400 hover:text-gray-700" data-close-modal>&times;</button></div>
+        <div class="text-center">
+            <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full border-2 border-orange-300 text-orange-500">
+                <svg class="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1M6 19h12a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2Z"></path></svg>
+            </div>
+            <h3 class="mt-3 text-xl font-bold text-gray-950">View Payment</h3>
+            <p class="mt-2 text-sm text-gray-600">Review reservation fee details and submitted proof.</p>
+        </div>
+        <div class="mt-5 grid gap-4 md:grid-cols-2">
+            <section class="rounded-lg border border-gray-200 p-4">
+                <h4 class="mb-3 text-sm font-bold text-orange-600">Appointment Details</h4>
+                <div class="space-y-2 text-sm" data-detail-list></div>
+            </section>
+            <section class="rounded-lg border border-gray-200 p-4">
+                <h4 class="mb-3 text-sm font-bold text-orange-600">Payment Summary</h4>
+                <div class="space-y-2 text-sm">
+                    <div class="flex justify-between"><span class="text-gray-500">Service Amount</span><strong id="paymentServiceAmount"></strong></div>
+                    <div class="flex justify-between"><span class="text-gray-500">Reservation Fee (20%)</span><strong id="paymentReservationFee"></strong></div>
+                    <div class="flex justify-between border-t border-gray-100 pt-2"><span class="font-semibold text-gray-800">Expected Payment</span><strong class="text-orange-600" id="paymentExpected"></strong></div>
+                </div>
+                <div class="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700">This fee will be deducted from the total service fee.</div>
+            </section>
+            <section class="rounded-lg border border-gray-200 p-4">
+                <h4 class="mb-3 text-sm font-bold text-orange-600">Payment Proof</h4>
+                <div id="paymentProofBox" class="rounded-lg bg-gray-50 p-3 text-center text-sm text-gray-500"></div>
+            </section>
+            <section class="rounded-lg border border-gray-200 p-4">
+                <h4 class="mb-3 text-sm font-bold text-orange-600">Payment Information</h4>
+                <div class="space-y-2 text-sm">
+                    <div class="flex justify-between gap-3"><span class="text-gray-500">Method</span><strong id="paymentMethod"></strong></div>
+                    <div class="flex justify-between gap-3"><span class="text-gray-500">Reference</span><strong class="text-right" id="paymentReference"></strong></div>
+                    <div class="flex justify-between gap-3"><span class="text-gray-500">Submitted</span><strong class="text-right" id="paymentSubmitted"></strong></div>
+                </div>
+            </section>
+        </div>
+        <div class="mt-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+            <button type="button" class="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50" data-close-modal>Cancel</button>
+            <button type="button" class="rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50" id="paymentRejectButton">Reject Payment</button>
+            <form id="paymentApproveForm" method="POST">
+                @csrf
+                @method('PUT')
+                <button type="submit" class="w-full rounded-lg bg-green-500 px-4 py-2 text-sm font-semibold text-white hover:bg-green-600">Approve Payment</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="deleteModal" class="appointment-modal-panel hidden">
+        <h3 class="text-lg font-bold text-gray-950">Delete Appointment</h3>
+        <p class="mt-2 text-sm text-gray-600">This will permanently remove the cancelled or rejected appointment.</p>
+        <div class="mt-4 flex justify-end gap-3">
+            <button type="button" class="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50" data-close-modal>Cancel</button>
+            <button type="button" class="rounded-lg bg-red-500 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600" id="confirmDeleteButton">Delete</button>
+        </div>
+    </div>
+
+    <div id="historyModal" class="appointment-modal-panel appointment-modal-panel--history hidden">
+        <div class="flex items-start justify-between gap-4">
+            <div>
+                <h3 class="text-xl font-bold text-gray-950">Appointment History</h3>
+                <p class="mt-1 text-sm text-gray-600">Completed appointments are stored here for quick review.</p>
+            </div>
+            <button type="button" class="text-2xl leading-none text-gray-400 hover:text-gray-700" data-close-modal>&times;</button>
+        </div>
+
+        <div class="mt-5 overflow-x-auto rounded-lg border border-gray-200">
+            <table class="w-full min-w-[720px]">
+                <thead class="bg-gray-50">
                     <tr>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Pet / Owner</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Service</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date & Time</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Pet / Owner</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Service</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Schedule</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Completed</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Actions</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-gray-200">
-                    @forelse($completedAppointments as $appointment)
-                    <tr class="hover:bg-gray-50">
+                <tbody class="divide-y divide-gray-100">
+                    @forelse($completedAppointments as $completedAppointment)
+                    <tr>
                         <td class="px-4 py-3">
-                            <p class="font-medium text-gray-900">{{ $appointment->pet->name }}</p>
-                            <p class="text-xs text-gray-500">{{ $appointment->user->name }}</p>
+                            <p class="text-sm font-semibold text-gray-900">{{ $completedAppointment->pet?->name ?? '-' }}</p>
+                            <p class="text-xs text-gray-500">{{ $completedAppointment->user?->name ?? '-' }}</p>
                         </td>
-                        <td class="px-4 py-3 text-sm text-gray-600">
-                            {{ $appointment->service ? $appointment->service->name : 'General Checkup' }}
-                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-700">{{ $completedAppointment->service?->name ?? 'General Checkup' }}</td>
                         <td class="px-4 py-3">
-                            <p class="text-sm font-medium text-gray-900">{{ Carbon\Carbon::parse($appointment->appointment_date)->format('M d, Y') }}</p>
-                            <p class="text-xs text-gray-500">{{ Carbon\Carbon::parse($appointment->appointment_time)->format('h:i A') }}</p>
+                            <p class="text-sm font-medium text-gray-900">{{ $completedAppointment->appointment_date?->format('M d, Y') ?? '-' }}</p>
+                            <p class="text-xs text-gray-500">{{ $completedAppointment->appointment_time ? \Carbon\Carbon::parse($completedAppointment->appointment_time)->format('h:i A') : '-' }}</p>
                         </td>
                         <td class="px-4 py-3">
-                            <span class="inline-flex px-3 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700">Completed</span>
+                            <span class="inline-flex rounded-full bg-green-100 px-2.5 py-1 text-xs font-semibold text-green-700">Completed</span>
+                            <p class="mt-1 text-xs text-gray-500">{{ $completedAppointment->completed_at?->format('M d, Y h:i A') ?? 'Marked complete' }}</p>
                         </td>
                         <td class="px-4 py-3">
-                            <a href="{{ route('admin.patients.records', $appointment->pet) }}" class="text-xs bg-orange-100 text-orange-700 px-3 py-1 rounded-lg hover:bg-orange-200">View Records</a>
+                            @if($completedAppointment->pet)
+                            <a href="{{ route('admin.patients.records', $completedAppointment->pet) }}" class="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200">Records</a>
+                            @else
+                            <span class="text-xs text-gray-400">No pet record</span>
+                            @endif
                         </td>
                     </tr>
                     @empty
                     <tr>
-                        <td colspan="5" class="px-4 py-8 text-center">
-                            <p class="text-gray-500">No completed appointments found</p>
-                        </td>
+                        <td colspan="5" class="px-4 py-10 text-center text-sm text-gray-500">No completed appointments yet.</td>
                     </tr>
                     @endforelse
                 </tbody>
@@ -265,84 +432,245 @@
         </div>
     </div>
 </div>
-
-<div id="deleteAppointmentModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 p-4">
-    <div class="bg-white rounded-2xl p-4 md:p-6 w-full max-w-md">
-        <div class="flex items-center gap-3 mb-4">
-            <div class="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
-                <svg class="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-                </svg>
-            </div>
-            <div>
-                <h3 class="text-lg font-semibold text-gray-900">Delete Appointment</h3>
-                <p class="text-sm text-gray-500">This will permanently remove the appointment.</p>
-            </div>
-        </div>
-        <div class="bg-gray-50 rounded-lg p-3 mb-4 space-y-1">
-            <p class="text-sm text-gray-700"><strong>Status:</strong> <span id="deleteAppointmentStatus"></span></p>
-            <p class="text-sm text-gray-700"><strong>Pet:</strong> <span id="deleteAppointmentPet"></span></p>
-            <p class="text-sm text-gray-700"><strong>Owner:</strong> <span id="deleteAppointmentOwner"></span></p>
-            <p class="text-sm text-gray-700"><strong>Date:</strong> <span id="deleteAppointmentDate"></span></p>
-            <p class="text-sm text-gray-700"><strong>Time:</strong> <span id="deleteAppointmentTime"></span></p>
-        </div>
-        <div class="flex flex-col md:flex-row justify-end gap-2 md:space-x-3">
-            <button type="button" onclick="closeDeleteAppointmentModal()" class="px-4 py-2 text-gray-600 hover:text-gray-800 w-full md:w-auto">Cancel</button>
-            <button type="button" onclick="submitDeleteAppointment()" class="px-6 py-2 bg-red-500 text-white font-medium rounded-lg hover:bg-red-600 w-full md:w-auto">Delete Appointment</button>
-        </div>
-    </div>
-</div>
 @endsection
 
 @push('scripts')
 <script>
-let deleteAppointmentFormId = null;
+const appointments = @json($appointmentsForModal);
+const appointmentsById = appointments.reduce(function (items, appointment) {
+    items[appointment.id] = appointment;
 
-function openRejectModal(id, petName, date, time) {
-    document.getElementById('rejectForm').action = '/admin/appointments/' + id + '/reject';
-    document.getElementById('rejectPetName').textContent = petName;
-    document.getElementById('rejectDate').textContent = date;
-    document.getElementById('rejectTime').textContent = time;
-    document.getElementById('rejectModal').classList.remove('hidden');
-    document.getElementById('rejectModal').classList.add('flex');
+    return items;
+}, {});
+
+let activeAppointment = null;
+let deleteFormId = null;
+
+const modalIds = ['approveModal', 'rejectModal', 'rescheduleModal', 'paymentModal', 'deleteModal', 'historyModal'];
+
+function modalBackdrop() {
+    return document.getElementById('modalBackdrop');
 }
 
-function closeRejectModal() {
-    document.getElementById('rejectModal').classList.add('hidden');
-    document.getElementById('rejectModal').classList.remove('flex');
+function formatPeso(amount) {
+    return '₱' + Number(amount || 0).toLocaleString('en-PH', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    });
 }
 
-function openHistoryModal() {
-    document.getElementById('historyModal').classList.remove('hidden');
-    document.getElementById('historyModal').classList.add('flex');
+function detailRows(appointment, currentLabel = 'Date & Time') {
+    return [
+        ['Pet Name', appointment.pet],
+        ['Owner', appointment.owner],
+        ['Service', appointment.service],
+        [currentLabel, appointment.date_label + ' • ' + appointment.time_label],
+        ['Status', appointment.status],
+    ].map(function (row) {
+        return '<div class="appointment-detail-row"><span class="appointment-detail-label">' + row[0] + '</span><strong class="appointment-detail-value">' + row[1] + '</strong></div>';
+    }).join('');
 }
 
-function closeHistoryModal() {
-    document.getElementById('historyModal').classList.add('hidden');
-    document.getElementById('historyModal').classList.remove('flex');
+function showModal(id, appointment) {
+    activeAppointment = appointment;
+    modalIds.forEach(function (modalId) {
+        const modal = document.getElementById(modalId);
+        modal.classList.toggle('hidden', modalId !== id);
+        modal.style.display = modalId === id ? 'block' : 'none';
+    });
+    modalBackdrop().classList.remove('hidden');
+    modalBackdrop().style.display = 'flex';
 }
 
-function openDeleteAppointmentModal(formId, petName, ownerName, date, time, status) {
-    deleteAppointmentFormId = formId;
-    document.getElementById('deleteAppointmentStatus').textContent = status;
-    document.getElementById('deleteAppointmentPet').textContent = petName;
-    document.getElementById('deleteAppointmentOwner').textContent = ownerName;
-    document.getElementById('deleteAppointmentDate').textContent = date;
-    document.getElementById('deleteAppointmentTime').textContent = time;
-    document.getElementById('deleteAppointmentModal').classList.remove('hidden');
-    document.getElementById('deleteAppointmentModal').classList.add('flex');
-}
-
-function closeDeleteAppointmentModal() {
-    deleteAppointmentFormId = null;
-    document.getElementById('deleteAppointmentModal').classList.add('hidden');
-    document.getElementById('deleteAppointmentModal').classList.remove('flex');
-}
-
-function submitDeleteAppointment() {
-    if (deleteAppointmentFormId) {
-        document.getElementById(deleteAppointmentFormId).submit();
+function closeModal() {
+    if (!modalBackdrop()) {
+        return;
     }
+
+    modalBackdrop().classList.add('hidden');
+    modalBackdrop().style.display = 'none';
+    modalIds.forEach(function (modalId) {
+        const modal = document.getElementById(modalId);
+        modal.classList.add('hidden');
+        modal.style.display = 'none';
+    });
 }
+
+function fillDetails(modalId, appointment, currentLabel) {
+    document.querySelector('#' + modalId + ' [data-detail-list]').innerHTML = detailRows(appointment, currentLabel);
+}
+
+function openApprove(appointment) {
+    fillDetails('approveModal', appointment, 'Date & Time');
+    document.getElementById('approveForm').action = appointment.approve_url;
+    showModal('approveModal', appointment);
+}
+
+function openReject(appointment) {
+    fillDetails('rejectModal', appointment, 'Date & Time');
+    document.getElementById('rejectForm').action = appointment.reject_url;
+    showModal('rejectModal', appointment);
+}
+
+function openReschedule(appointment) {
+    fillDetails('rescheduleModal', appointment, 'Current Date & Time');
+    document.getElementById('rescheduleForm').action = appointment.reschedule_url;
+    document.getElementById('rescheduleDate').value = '';
+    document.getElementById('rescheduleTime').innerHTML = '<option value="">Select date first</option>';
+    document.getElementById('rescheduleReason').value = '';
+    document.getElementById('rescheduleReasonCount').textContent = '0';
+    showModal('rescheduleModal', appointment);
+}
+
+function openPayment(appointment) {
+    fillDetails('paymentModal', appointment, 'Date & Time');
+    document.getElementById('paymentServiceAmount').textContent = formatPeso(appointment.service_amount);
+    document.getElementById('paymentReservationFee').textContent = formatPeso(appointment.reservation_fee);
+    document.getElementById('paymentExpected').textContent = formatPeso(appointment.reservation_fee);
+    document.getElementById('paymentMethod').textContent = appointment.payment_method;
+    document.getElementById('paymentReference').textContent = appointment.payment_reference;
+    document.getElementById('paymentSubmitted').textContent = appointment.payment_submitted_at || '-';
+    document.getElementById('paymentApproveForm').action = appointment.approve_url;
+
+    const proofBox = document.getElementById('paymentProofBox');
+    if (!appointment.payment_proof_url) {
+        proofBox.innerHTML = '<p>No uploaded payment proof.</p>';
+    } else if (appointment.payment_proof_is_image) {
+        proofBox.innerHTML = '<img src="' + appointment.payment_proof_url + '" alt="Payment proof" class="mx-auto max-h-64 rounded-lg object-contain"><a href="' + appointment.payment_proof_url + '" target="_blank" class="mt-3 inline-flex rounded-lg bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100">View Full Size</a>';
+    } else {
+        proofBox.innerHTML = '<p class="mb-3">' + appointment.payment_proof_name + '</p><a href="' + appointment.payment_proof_url + '" target="_blank" class="inline-flex rounded-lg bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100">Open File</a>';
+    }
+
+    showModal('paymentModal', appointment);
+}
+
+function openDelete(appointment) {
+    deleteFormId = appointment.delete_form_id;
+    showModal('deleteModal', appointment);
+}
+
+function openHistory() {
+    showModal('historyModal', null);
+}
+
+document.addEventListener('click', function (event) {
+    const closeButton = event.target.closest('[data-close-modal]');
+
+    if (closeButton) {
+        closeModal();
+        return;
+    }
+
+    if (modalBackdrop() && event.target === modalBackdrop()) {
+        closeModal();
+        return;
+    }
+
+    const paymentRejectButton = event.target.closest('#paymentRejectButton');
+
+    if (paymentRejectButton && activeAppointment) {
+        openReject(activeAppointment);
+        return;
+    }
+
+    const confirmDeleteButton = event.target.closest('#confirmDeleteButton');
+
+    if (confirmDeleteButton && deleteFormId) {
+        document.getElementById(deleteFormId).submit();
+        return;
+    }
+
+    const button = event.target.closest('[data-action]');
+
+    if (!button) {
+        return;
+    }
+
+    if (button.dataset.action === 'history') {
+        openHistory();
+        return;
+    }
+
+    const appointment = appointmentsById[Number(button.dataset.appointmentId)];
+
+    if (!appointment) {
+        return;
+    }
+
+    if (button.dataset.action === 'approve') {
+        openApprove(appointment);
+    } else if (button.dataset.action === 'reject') {
+        openReject(appointment);
+    } else if (button.dataset.action === 'reschedule') {
+        openReschedule(appointment);
+    } else if (button.dataset.action === 'payment') {
+        openPayment(appointment);
+    } else if (button.dataset.action === 'delete') {
+        openDelete(appointment);
+    }
+});
+
+document.addEventListener('change', function (event) {
+    if (event.target.id !== 'rescheduleDate') {
+        return;
+    }
+
+    const select = document.getElementById('rescheduleTime');
+
+    if (!activeAppointment || !event.target.value) {
+        select.innerHTML = '<option value="">Select date first</option>';
+        return;
+    }
+
+    select.innerHTML = '<option value="">Loading...</option>';
+
+    let url = '/appointments/slots?date=' + encodeURIComponent(event.target.value);
+    if (activeAppointment.service_id) {
+        url += '&service_id=' + encodeURIComponent(activeAppointment.service_id);
+    }
+    url += '&exclude_appointment_id=' + encodeURIComponent(activeAppointment.id);
+
+    fetch(url)
+        .then(function (response) {
+            return response.json();
+        })
+        .then(function (result) {
+            const slots = result.data || [];
+            const availableSlots = slots.filter(function (slot) {
+                return slot.available;
+            });
+
+            select.innerHTML = '<option value="">Select new time</option>';
+
+            if (!availableSlots.length) {
+                select.innerHTML = '<option value="">No slots available</option>';
+                return;
+            }
+
+            availableSlots.forEach(function (slot) {
+                const option = document.createElement('option');
+                option.value = slot.time;
+                option.textContent = slot.display;
+                select.appendChild(option);
+            });
+        })
+        .catch(function () {
+            select.innerHTML = '<option value="">Unable to load slots</option>';
+        });
+});
+
+document.addEventListener('input', function (event) {
+    if (event.target.id !== 'rescheduleReason') {
+        return;
+    }
+
+    document.getElementById('rescheduleReasonCount').textContent = event.target.value.length;
+});
+
+document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') {
+        closeModal();
+    }
+});
 </script>
 @endpush

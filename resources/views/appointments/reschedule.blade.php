@@ -83,7 +83,7 @@ function loadTimeSlots() {
     
     timeSlotSelect.innerHTML = '<option value="">Loading...</option>';
     
-    let url = '/api/appointments/slots?date=' + encodeURIComponent(date);
+    let url = '/appointments/slots?date=' + encodeURIComponent(date);
     if (serviceId) {
         url += '&service_id=' + encodeURIComponent(serviceId);
     }

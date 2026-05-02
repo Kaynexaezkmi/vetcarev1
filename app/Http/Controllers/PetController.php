@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\Pet;
-use App\Models\MedicalRecord;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -11,6 +10,11 @@ class PetController extends Controller
 {
     public function store(Request $request)
     {
+        if (Auth::user()->isAdmin()) {
+            return redirect()->route('dashboard')
+                ->with('error', 'Admins cannot add personal pet profiles.');
+        }
+
         $request->validate([
             'name' => 'required|string|max:255',
             'type' => 'required|in:Dog,Cat,Bird,Rabbit,Hamster,Fish,Reptile,Other',
@@ -35,7 +39,7 @@ class PetController extends Controller
 
     public function update(Request $request, Pet $pet)
     {
-        if ($pet->user_id !== Auth::id() && !Auth::user()->isAdmin()) {
+        if ($pet->user_id !== Auth::id() && ! Auth::user()->isAdmin()) {
             abort(403);
         }
 
@@ -68,7 +72,7 @@ class PetController extends Controller
 
     public function destroy(Pet $pet)
     {
-        if ($pet->user_id !== Auth::id() && !Auth::user()->isAdmin()) {
+        if ($pet->user_id !== Auth::id() && ! Auth::user()->isAdmin()) {
             abort(403);
         }
 
@@ -79,7 +83,7 @@ class PetController extends Controller
 
     public function records(Pet $pet)
     {
-        if ($pet->user_id !== Auth::id() && !Auth::user()->isAdmin()) {
+        if ($pet->user_id !== Auth::id() && ! Auth::user()->isAdmin()) {
             abort(403);
         }
 
