@@ -63,6 +63,13 @@ class AppointmentController extends Controller
         }
 
         $appointmentTime = $this->normalizeAppointmentTime($request->appointment_time);
+        $paymentReference = is_string($request->payment_reference)
+            ? preg_replace('/\s+/', '', trim($request->payment_reference))
+            : $request->payment_reference;
+
+        $request->merge([
+            'payment_reference' => $paymentReference === '' ? null : $paymentReference,
+        ]);
 
         $validator = Validator::make($request->all(), [
             'pet_id' => [
@@ -76,12 +83,13 @@ class AppointmentController extends Controller
             'reason' => 'nullable|string|required_without:service_id',
             'appointment_notes' => 'nullable|string|max:500',
             'payment_proof' => 'nullable|required_without:payment_reference|file|mimes:jpg,jpeg,png,pdf|max:5120',
-            'payment_reference' => 'nullable|required_without:payment_proof|string|max:50',
+            'payment_reference' => 'nullable|required_without:payment_proof|digits:12',
             'terms_agreement' => 'accepted',
         ], [
             'reason.required_without' => 'Please specify your reason for visit.',
             'payment_proof.required_without' => 'Please upload a payment image or enter a GCash reference number.',
             'payment_reference.required_without' => 'Please upload a payment image or enter a GCash reference number.',
+            'payment_reference.digits' => 'The GCash reference number must be exactly 12 digits.',
             'terms_agreement.accepted' => 'Please agree to the Terms and Conditions before confirming your appointment.',
         ]);
 

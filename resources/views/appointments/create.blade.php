@@ -6,7 +6,7 @@
     $submittedAppointment = $submittedAppointment ?? null;
     $appointmentServiceCatalog = collect($serviceCatalog ?? [])->filter(fn ($service) => ! empty($service['service_id']))->values();
     $selectedPet = $submittedAppointment?->pet ?? $pets->firstWhere('id', (int) old('pet_id')) ?? $pets->first();
-    $selectedService = $submittedAppointment?->service ?? $services->firstWhere('id', (int) old('service_id')) ?? $services->first();
+    $selectedService = $submittedAppointment?->service ?? $services->firstWhere('id', (int) old('service_id'));
     $selectedServiceCatalog = $appointmentServiceCatalog->firstWhere('service_id', $selectedService?->id);
     $clinicLocation = '713 Earnshaw St, Sampaloc, Manila, 1008 Metro Manila';
     $serviceAmount = (float) ($selectedServiceCatalog['booking_amount'] ?? $selectedService?->price ?? 0);
@@ -383,15 +383,15 @@
                     No services are available right now. You can continue by adding a reason for visit on the schedule step.
                 </div>
                 @else
-                <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(300px,0.85fr)]">
-                    <div class="grid gap-3 sm:grid-cols-2">
+                <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
+                    <div class="grid gap-3 md:grid-cols-2">
                     @foreach($appointmentServiceCatalog as $service)
                     @php
                         $serviceId = (int) $service['service_id'];
                         $isServiceSelected = $selectedService?->id === $serviceId;
                     @endphp
                     <label
-                        class="group flex cursor-pointer items-start gap-3 rounded-xl border bg-white p-3 transition hover:border-orange-300 hover:bg-orange-50/40 {{ $isServiceSelected ? 'border-orange-500 bg-orange-50/70 shadow-sm shadow-orange-100' : 'border-gray-200' }}"
+                        class="group flex min-h-28 cursor-pointer items-start gap-3 rounded-xl border bg-white p-4 transition hover:border-orange-300 hover:bg-orange-50/40 {{ $isServiceSelected ? 'border-orange-500 bg-orange-50/70 shadow-sm shadow-orange-100' : 'border-gray-200' }}"
                         data-service-card
                     >
                         <input
@@ -416,13 +416,9 @@
                         </div>
 
                         <div class="min-w-0 flex-1">
-                            <div class="flex items-start justify-between gap-3">
-                                <div class="min-w-0">
-                                    <h4 class="truncate text-sm font-semibold text-gray-950">{{ $service['title'] }}</h4>
-                                    <p class="mt-1 line-clamp-2 text-xs leading-5 text-gray-600">{{ $service['description'] }}</p>
-                                </div>
-                                <span class="shrink-0 text-sm font-bold text-gray-950">{{ $service['booking_price'] }}</span>
-                            </div>
+                            <h4 class="break-words text-sm font-semibold leading-5 text-gray-950">{{ $service['title'] }}</h4>
+                            <p class="mt-1 text-base font-bold leading-5 text-gray-950">{{ $service['booking_price'] }}</p>
+                            <p class="mt-2 line-clamp-2 text-xs leading-5 text-gray-600">{{ $service['description'] }}</p>
                         </div>
                     </label>
                     @endforeach
@@ -475,7 +471,7 @@
                         <button type="button" id="backToServicesBtn" class="inline-flex items-center justify-center rounded-lg border border-orange-200 bg-white px-4 py-2 text-sm font-semibold text-orange-600 transition hover:bg-orange-50">
                             Change Service
                         </button>
-                        <button type="button" id="nextPaymentBtn" class="inline-flex items-center justify-center gap-2 rounded-lg bg-orange-500 px-5 py-2 text-sm font-semibold text-white shadow-sm shadow-orange-200 transition hover:bg-orange-600">
+                        <button type="button" id="nextPaymentBtn" class="inline-flex items-center justify-center gap-2 rounded-lg bg-orange-500 px-5 py-2 text-sm font-semibold text-white shadow-sm shadow-orange-200 transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50" disabled>
                             Next: Payment
                             <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"></path>
@@ -504,6 +500,7 @@
                                 Select a date to view available times.
                             </div>
                         </div>
+                        <p id="scheduleRequirementMessage" class="mt-3 text-xs font-medium text-orange-600">Select an appointment date and time slot to continue.</p>
                         <p class="mt-3 text-xs text-blue-600">Time slots are limited. Please choose as early as possible.</p>
                     </div>
                 </div>
@@ -592,7 +589,7 @@
 
                         <label for="paymentReference" class="block text-sm font-semibold text-gray-950">Enter Reference Number</label>
                         <p class="mt-1 text-xs text-gray-500">Enter the 12-digit GCash reference number.</p>
-                        <input type="text" id="paymentReference" name="payment_reference" value="{{ old('payment_reference') }}" inputmode="numeric" maxlength="20" placeholder="e.g. 6123 4567 8901" class="mt-2 w-full rounded-xl border border-gray-300 px-4 py-3 text-sm text-gray-700 focus:border-orange-500 focus:ring-2 focus:ring-orange-500">
+                        <input type="text" id="paymentReference" name="payment_reference" value="{{ old('payment_reference') }}" inputmode="numeric" pattern="[0-9]{12}" maxlength="12" placeholder="e.g. 612345678901" class="mt-2 w-full rounded-xl border border-gray-300 px-4 py-3 text-sm text-gray-700 focus:border-orange-500 focus:ring-2 focus:ring-orange-500">
                         <p id="paymentRequirementMessage" class="mt-2 text-xs font-medium text-orange-600">Upload a payment image or enter a reference number to continue.</p>
                     </div>
                 </div>
@@ -810,7 +807,7 @@
                 </div>
             </section>
 
-            <section class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm md:p-5">
+            <section id="paymentSummaryCard" class="hidden rounded-xl border border-gray-200 bg-white p-4 shadow-sm md:p-5">
                 <h3 class="mb-4 font-semibold text-gray-950">Payment Summary</h3>
                 <dl class="space-y-3 text-sm">
                     <div class="flex items-center justify-between gap-3">
@@ -871,6 +868,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const dateInput = document.getElementById('appointmentDate');
     const timeSlotSelect = document.getElementById('timeSlot');
     const timeSlotButtons = document.getElementById('timeSlotButtons');
+    const scheduleRequirementMessage = document.getElementById('scheduleRequirementMessage');
     const reasonWrapper = document.getElementById('reasonWrapper');
     const serviceDetailPanel = document.getElementById('serviceDetailPanel');
     const reasonLabel = document.getElementById('reasonLabel');
@@ -908,6 +906,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const summaryServiceAmount = document.getElementById('summaryServiceAmount');
     const summaryReservationFee = document.getElementById('summaryReservationFee');
     const summaryTotal = document.getElementById('summaryTotal');
+    const paymentSummaryCard = document.getElementById('paymentSummaryCard');
     const paymentTotal = document.getElementById('paymentTotal');
     const confirmPetInitial = document.getElementById('confirmPetInitial');
     const confirmPetName = document.getElementById('confirmPetName');
@@ -1093,6 +1092,7 @@ document.addEventListener('DOMContentLoaded', function () {
         paymentSection?.classList.toggle('hidden', step !== 4);
         confirmSection?.classList.toggle('hidden', step !== 5);
         notesSection?.classList.toggle('hidden', step !== 6);
+        paymentSummaryCard?.classList.toggle('hidden', step < 4);
         setStep(step);
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -1211,6 +1211,22 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
+    function hasScheduleRequirement() {
+        return Boolean(dateInput && dateInput.value && timeSlotSelect && timeSlotSelect.value);
+    }
+
+    function updateScheduleButtonState() {
+        const canContinue = hasScheduleRequirement();
+
+        if (nextPaymentBtn) {
+            nextPaymentBtn.disabled = !canContinue;
+        }
+
+        if (scheduleRequirementMessage) {
+            scheduleRequirementMessage.classList.toggle('hidden', canContinue);
+        }
+    }
+
     function updatePaymentReferenceSummary() {
         if (!paymentReference || !confirmPaymentReference) {
             return;
@@ -1220,11 +1236,33 @@ document.addEventListener('DOMContentLoaded', function () {
         confirmPaymentReference.textContent = reference ? 'Reference No.: ' + reference : 'Reference No.: Not provided';
     }
 
+    function sanitizedPaymentReference() {
+        if (!paymentReference) {
+            return '';
+        }
+
+        return paymentReference.value.replace(/\D/g, '').slice(0, 12);
+    }
+
+    function syncPaymentReferenceInput() {
+        if (!paymentReference) {
+            return;
+        }
+
+        const reference = sanitizedPaymentReference();
+
+        if (paymentReference.value !== reference) {
+            paymentReference.value = reference;
+        }
+    }
+
     function hasPaymentRequirement() {
         const hasProof = Boolean(paymentProof && paymentProof.files && paymentProof.files.length > 0);
-        const hasReference = Boolean(paymentReference && paymentReference.value.trim() !== '');
+        const reference = sanitizedPaymentReference();
+        const hasReference = reference.length === 12;
+        const hasInvalidReference = Boolean(paymentReference && paymentReference.value.trim() !== '' && !hasReference);
 
-        return hasProof || hasReference;
+        return (hasProof || hasReference) && !hasInvalidReference;
     }
 
     function updatePaymentButtonState() {
@@ -1287,11 +1325,13 @@ document.addEventListener('DOMContentLoaded', function () {
             timeSlotSelect.innerHTML = '<option value="">Select date first</option>';
             timeSlotButtons.innerHTML = '<div class="rounded-xl border border-dashed border-gray-300 px-4 py-6 text-center text-sm text-gray-500">Select a date to view available times.</div>';
             updateDateTimeSummary();
+            updateScheduleButtonState();
             return;
         }
 
         timeSlotSelect.innerHTML = '<option value="">Loading...</option>';
         timeSlotButtons.innerHTML = '<div class="rounded-xl border border-dashed border-gray-300 px-4 py-6 text-center text-sm text-gray-500">Loading time slots...</div>';
+        updateScheduleButtonState();
 
         let url = '/appointments/slots?date=' + encodeURIComponent(date);
         if (serviceId) {
@@ -1313,6 +1353,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     timeSlotSelect.appendChild(option);
                     timeSlotButtons.innerHTML = '<div class="rounded-xl border border-dashed border-gray-300 px-4 py-6 text-center text-sm text-gray-500">No time slots are available for this date.</div>';
                     updateDateTimeSummary();
+                    updateScheduleButtonState();
                     return;
                 }
 
@@ -1369,17 +1410,20 @@ document.addEventListener('DOMContentLoaded', function () {
                         button.classList.remove('border-gray-200', 'bg-white', 'text-gray-800');
                         button.classList.add('border-orange-500', 'bg-orange-50', 'text-orange-600');
                         updateDateTimeSummary();
+                        updateScheduleButtonState();
                     });
 
                     timeSlotButtons.appendChild(button);
                 });
 
                 updateDateTimeSummary();
+                updateScheduleButtonState();
             })
             .catch(function () {
                 timeSlotSelect.innerHTML = '<option value="">Error loading slots</option>';
                 timeSlotButtons.innerHTML = '<div class="rounded-xl border border-dashed border-red-200 bg-red-50 px-4 py-6 text-center text-sm text-red-600">Error loading time slots.</div>';
                 updateDateTimeSummary();
+                updateScheduleButtonState();
             });
     }
 
@@ -1431,6 +1475,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
     if (nextPaymentBtn) {
         nextPaymentBtn.addEventListener('click', function () {
+            if (!hasScheduleRequirement()) {
+                updateScheduleButtonState();
+                return;
+            }
+
             updateDateTimeSummary();
             showStep(4);
         });
@@ -1509,7 +1558,10 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     if (timeSlotSelect) {
-        timeSlotSelect.addEventListener('change', updateDateTimeSummary);
+        timeSlotSelect.addEventListener('change', function () {
+            updateDateTimeSummary();
+            updateScheduleButtonState();
+        });
     }
 
     if (paymentProof && paymentProofLabel) {
@@ -1522,6 +1574,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     if (paymentReference) {
         paymentReference.addEventListener('input', function () {
+            syncPaymentReferenceInput();
             updatePaymentReferenceSummary();
             updatePaymentButtonState();
         });
@@ -1549,6 +1602,8 @@ document.addEventListener('DOMContentLoaded', function () {
     toggleReasonField();
     updateServiceSummary();
     updateDateTimeSummary();
+    updateScheduleButtonState();
+    syncPaymentReferenceInput();
     updatePaymentReferenceSummary();
     updatePaymentButtonState();
     updateConfirmButtonState();
